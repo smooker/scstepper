@@ -715,7 +715,7 @@ uint8_t CDC_RxAvailable(void)
 uint8_t CDC_RxRead(void)
 {
     uint8_t byte = UserRxBufferFS[rxTail];
-    rxTail = (rxTail + 1) % APP_RX_DATA_SIZE;
+    rxTail = (rxTail + 1) % RX_BUF_SIZE;
     return byte;
 }
 
