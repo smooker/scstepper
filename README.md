@@ -53,3 +53,7 @@ Pin assignments are the source of truth for the PCB netlist — see `fw_to_net.p
 ## EEPROM
 
 Flash sectors 6 & 7, 7 parameters: `mmpsmax`, `mmpsmin`, `dvdtacc`, `dvdtdecc`, `jogmm`, `stepmm`, `spmm`
+
+## Docs
+
+- [Capture Analysis](docs/capture_analysis.md) — FX2/sigrok logic capture of `move 10`, ramp bug analysis
