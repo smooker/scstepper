@@ -1,0 +1,78 @@
+PCD_SetupStageCallback+14
+
+
+
++ +-- 27 lines: /:  Bus 001.Port 001: Dev 001, Class=root_hub, Driver=ehci-pci/2p, 480M--------------------------------|+ +-- 27 lines: /:  Bus 001.Port 001: Dev 001, Class=root_hub, Driver=ehci-pci/2p, 480M--------------------------------
+      |__ Port 001: Dev 106, If 4, Class=Application Specific Interface, Driver=[none], 12M                            |      |__ Port 001: Dev 106, If 4, Class=Application Specific Interface, Driver=[none], 12M                            
+          ID 1d50:6018 OpenMoko, Inc. Black Magic Debug Probe (Application)                                            |          ID 1d50:6018 OpenMoko, Inc. Black Magic Debug Probe (Application)                                            
+          /sys/bus/usb/devices/3-1  /dev/bus/usb/003/106                                                               |          /sys/bus/usb/devices/3-1  /dev/bus/usb/003/106                                                               
+      |__ Port 001: Dev 106, If 5, Class=Vendor Specific Class, Driver=[none], 12M                                     |      |__ Port 001: Dev 106, If 5, Class=Vendor Specific Class, Driver=[none], 12M                                     
+          ID 1d50:6018 OpenMoko, Inc. Black Magic Debug Probe (Application)                                            |          ID 1d50:6018 OpenMoko, Inc. Black Magic Debug Probe (Application)                                            
+          /sys/bus/usb/devices/3-1  /dev/bus/usb/003/106                                                               |          /sys/bus/usb/devices/3-1  /dev/bus/usb/003/106                                                               
+      |__ Port 002: Dev 035, If 0, Class=Communications, Driver=cdc_acm, 12M                                           |  ---------------------------------------------------------------------------------------------------------------------
+          ID 0483:5740 STMicroelectronics Virtual COM Port                                                             |  ---------------------------------------------------------------------------------------------------------------------
+          /sys/bus/usb/devices/3-2  /dev/bus/usb/003/035                                                               |  ---------------------------------------------------------------------------------------------------------------------
+      |__ Port 002: Dev 035, If 1, Class=CDC Data, Driver=cdc_acm, 12M                                                 |  ---------------------------------------------------------------------------------------------------------------------
+          ID 0483:5740 STMicroelectronics Virtual COM Port                                                             |  ---------------------------------------------------------------------------------------------------------------------
+          /sys/bus/usb/devices/3-2  /dev/bus/usb/003/035                                                               |  ---------------------------------------------------------------------------------------------------------------------
+      |__ Port 005: Dev 006, If 0, Class=Human Interface Device, Driver=usbhid, 1.5M                                   |      |__ Port 005: Dev 006, If 0, Class=Human Interface Device, Driver=usbhid, 1.5M                                   
+          ID 046d:c077 Logitech, Inc. Mouse                                                                            |          ID 046d:c077 Logitech, Inc. Mouse                                                                            
+          /sys/bus/usb/devices/3-5  /dev/bus/usb/003/006                                                               |          /sys/bus/usb/devices/3-5  /dev/bus/usb/003/006                                                               
+      |__ Port 006: Dev 110, If 0, Class=Human Interface Device, Driver=usbhid, 12M                                    |      |__ Port 006: Dev 110, If 0, Class=Human Interface Device, Driver=usbhid, 12M                                    
+          ID 05ac:0250 Apple, Inc. Aluminium Keyboard (ISO)                                                            |          ID 05ac:0250 Apple, Inc. Aluminium Keyboard (ISO)                                                            
+          /sys/bus/usb/devices/3-6  /dev/bus/usb/003/110                                                               |          /sys/bus/usb/devices/3-6  /dev/bus/usb/003/110                                                               
++ +-- 12 lines: |__ Port 006: Dev 110, If 1, Class=Human Interface Device, Driver=usbhid, 12M--------------------------|+ +-- 12 lines: |__ Port 006: Dev 110, If 1, Class=Human Interface Device, Driver=usbhid, 12M--------------------------
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                      
+~                                                                                                                      |~                                                                                                                    
+
+/home/chichko/STM32Cube/Repository/STM32Cube_FW_F0_V1.10.0/Projects/STM32072B_EVAL/Applications/USB_Device/CDC_Standalone ama niama nishto interesno
+
+
+
+
+
+170336 root@sw2 /home/smooker # cat /sys/kernel/debug/usb/usbmon/3u | grep 3:038
+ffff9c21fc072240 212250979 C Bi:3:038:1 0 16 = 09353232 35313434 09313932 320d0a20
+ffff9c21fc072240 212250991 S Bi:3:038:1 -115 128 <
+ffff9c21fc072b40 213211952 C Bi:3:038:1 0 16 = 09353232 37303636 09313932 320d0a20
+ffff9c21fc072b40 213211965 S Bi:3:038:1 -115 128 <
+ffff9c21fc072c00 214172877 C Bi:3:038:1 0 16 = 09353232 38393838 09313932 320d0a20
+ffff9c21fc072c00 214172886 S Bi:3:038:1 -115 128 <
+ffff9c21fc0729c0 215133750 C Bi:3:038:1 0 16 = 09353233 30393130 09313932 320d0a20
+ffff9c21fc0729c0 215133768 S Bi:3:038:1 -115 128 <
+ffff9c21fc072780 216094708 C Bi:3:038:1 0 16 = 09353233 32383332 09313932 320d0a20
+ffff9c21fc072780 216094720 S Bi:3:038:1 -115 128 <
+ffff9c21fc072300 217055662 C Bi:3:038:1 0 16 = 09353233 34373534 09313932 320d0a20
+ffff9c21fc072300 217055674 S Bi:3:038:1 -115 128 <
+ffff9c21fc072480 218016551 C Bi:3:038:1 0 16 = 09353233 36363736 09313932 320d0a20
+ffff9c21fc072480 218016561 S Bi:3:038:1 -115 128 <
+ffff9c21fc072600 218977482 C Bi:3:038:1 0 16 = 09353233 38353938 09313932 320d0a20
+ffff9c21fc072600 218977496 S Bi:3:038:1 -115 128 <
+
+
+
+#########################################
+hpcd_USB_OTG_FS.Init.dev_endpoints:4
+hpcd_USB_OTG_FS.Init.Host_channels:0
+hpcd_USB_OTG_FS.Init.dma_enable:0
+hpcd_USB_OTG_FS.Init.speed:2
+hpcd_USB_OTG_FS.Init.ep0_mps:0
+hpcd_USB_OTG_FS.Init.phy_itface:2
+hpcd_USB_OTG_FS.Init.Sof_enable:1
+hpcd_USB_OTG_FS.Init.low_power_enable:0
+hpcd_USB_OTG_FS.Init.lpm_enable:0
+hpcd_USB_OTG_FS.Init.battery_charging_enable:0
+hpcd_USB_OTG_FS.Init.vbus_sensing_enable:1
+hpcd_USB_OTG_FS.Init.use_dedicated_ep1:0
+hpcd_USB_OTG_FS.Init.use_external_vbus:0
+
+

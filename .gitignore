@@ -1,0 +1,7 @@
+build/
+*.o
+*.d
+*.lst
+*.map
+*.pyc
+__pycache__/

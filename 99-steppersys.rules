@@ -1,0 +1,24 @@
+# stepper_sc udev rules — Black Pill + Black Magic Probe + FX2 Saleae
+# Install: cp 99-steppersys.rules /etc/udev/rules.d/ && udevadm control --reload-rules && udevadm trigger
+
+ACTION!="add|change", GOTO="steppersys_end"
+
+# STM32 Black Pill — Target CDC (stepper_sc)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", SYMLINK+="ttyACMTarg", SYMLINK+="ttyACMTarg%E{ID_SERIAL_SHORT}", MODE="0666"
+
+# Black Magic Probe — GDB
+SUBSYSTEM=="tty", ATTRS{interface}=="Black Magic GDB Server", SYMLINK+="ttyBmpGdb", SYMLINK+="ttyBmpGdb%E{ID_SERIAL_SHORT}", MODE="0666"
+
+# Black Magic Probe — UART
+SUBSYSTEM=="tty", ATTRS{interface}=="Black Magic UART Port", SYMLINK+="ttyBmpTarg", SYMLINK+="ttyBmpTarg%E{ID_SERIAL_SHORT}", MODE="0666"
+
+# Black Magic Probe — USB device
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", ATTR{idProduct}=="6018", MODE="0666", TAG+="uaccess"
+
+# FX2 Saleae Logic — before firmware upload
+SUBSYSTEM=="usb", ATTR{idVendor}=="0925", ATTR{idProduct}=="3881", MODE="0666"
+
+# FX2 Saleae Logic — after firmware upload (fx2lafw)
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", ATTR{idProduct}=="608e", MODE="0666"
+
+LABEL="steppersys_end"

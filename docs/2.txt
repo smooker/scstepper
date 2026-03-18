@@ -1,0 +1,8 @@
+[0] from 0x080016a8 in CDC_Control_FS+16 at USB_DEVICE/App/usbd_cdc_if.c:242
+[1] from 0x08004454 in USBD_CDC_Setup+156 at Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Src/usbd_cdc.c:470
+[2] from 0x08003eb6 in USBD_StdItfReq+92 at Middlewares/ST/STM32_USB_Device_Library/Core/Src/usbd_ctlreq.c:193
+[3] from 0x08003698 in USBD_LL_SetupStage+76 at Middlewares/ST/STM32_USB_Device_Library/Core/Src/usbd_core.c:563
+[4] from 0x0800181a in PCD_SetupStageCallback+14 at USB_DEVICE/Target/usbd_conf.c:145
+[5] from 0x08001c0a in PCD_EP_OutSetupPacket_int+46 at Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pcd.c:2369
+[6] from 0x080025b2 in HAL_PCD_IRQHandler+448 at Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pcd.c:1154
+[7] from 0x08000a90 in OTG_FS_IRQHandler+8 at Core/Src/stm32f4xx_it.c:209
