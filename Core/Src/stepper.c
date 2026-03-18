@@ -356,6 +356,15 @@ void Stepper_RunContinuous(int8_t dir)
 
 void Stepper_Stop(void)
 {
+    /*
+     * Critical section: this modifies stepsRemaining, decelIndex, stepperState
+     * which Stepper_ISR (TIM2) also reads/writes.
+     *
+     * From prio-0 ISR (endstops, jog): safe — same priority as TIM2, atomic.
+     * From main loop (CLI 'stop'): TIM2 can preempt → race condition.
+     * __disable_irq() covers both cases with negligible latency (~10 cycles).
+     */
+    __disable_irq();
     if (stepperState == STEPPER_CONST || stepperState == STEPPER_ACCEL)
     {
         /* find matching decel index for current speed */
@@ -366,6 +375,7 @@ void Stepper_Stop(void)
         stepsRemaining = decelIndex + 2;
         stepperState = STEPPER_DECEL;
     }
+    __enable_irq();
 }
 
 uint8_t Stepper_IsBusy(void)

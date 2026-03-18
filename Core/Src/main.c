@@ -99,6 +99,7 @@ volatile uint8_t endstopsEn = 1;  /* 0 = ignore endstop EXTI events */
 volatile int8_t  esBlocked  = 0;  /* -1 = ES_L hit (block CCW), +1 = ES_R hit (block CW), 0 = clear */
 volatile uint32_t buzzTick = 0;
 volatile uint8_t  buzzActive = 0;
+volatile uint8_t  buzzRequest = 0;  /* set in ISR, handled in main loop */
 
 /* Non-blocking morse state machine */
 typedef enum { MRS_IDLE, MRS_TONE, MRS_INTER, MRS_LETTER, MRS_LETTERGAP } MorseState;
@@ -921,6 +922,38 @@ void ProcessLineOld(void)
   * @brief  The application entry point.
   * @retval int
   */
+/*
+ * FixNVIC_Priorities() — override CubeMX NVIC defaults.
+ *
+ * Problem: CubeMX sets USB at prio 0 (highest), stepper TIM2 at prio 1,
+ * and jog buttons at prio 2. This causes:
+ *   - Stepper_Stop() called from jog release (prio 2) can be preempted
+ *     by TIM2 (prio 1), creating race condition on shared state variables
+ *   - USB higher than stepper means USB traffic can delay pulse timing
+ *
+ * Fix: movement/stop all at prio 0, buttons at prio 2, USB at prio 3.
+ * Same-priority ISRs cannot preempt each other on Cortex-M4, so
+ * Stepper_Stop() is atomic when called from endstop/jog ISRs.
+ *
+ * When doing final CubeMX regen, transfer these priorities to .ioc
+ * and remove this function.
+ */
+static void FixNVIC_Priorities(void)
+{
+    /* prio 0: movement + safety (cannot preempt each other = atomic) */
+    HAL_NVIC_SetPriority(TIM2_IRQn,          0, 0);  /* stepper pulse */
+    HAL_NVIC_SetPriority(EXTI3_IRQn,         0, 0);  /* ES_L endstop  */
+    HAL_NVIC_SetPriority(EXTI4_IRQn,         0, 0);  /* ES_R endstop  */
+    HAL_NVIC_SetPriority(EXTI9_5_IRQn,       0, 0);  /* jog buttons   */
+
+    /* prio 2: step buttons (fire-and-forget, no Stepper_Stop) */
+    HAL_NVIC_SetPriority(EXTI0_IRQn,         2, 0);  /* STEPL */
+    HAL_NVIC_SetPriority(EXTI1_IRQn,         2, 0);  /* STEPR */
+
+    /* prio 3: USB CDC (device works standalone without PC) */
+    HAL_NVIC_SetPriority(OTG_FS_IRQn,        3, 0);
+}
+
 int main(void)
 {
 
@@ -951,6 +984,9 @@ int main(void)
   MX_GPIO_Init();
   MX_USB_DEVICE_Init();
   MX_TIM2_Init();
+
+  FixNVIC_Priorities();  /* override CubeMX defaults — see comment above */
+
   /* USER CODE BEGIN 2 */
 
   setvbuf(stdout, NULL, _IONBF, 0);  /* disable buffering entirely */
@@ -1081,6 +1117,14 @@ int main(void)
             break;
         default: break;
         }
+    }
+
+    /* Buzzer: handle request from ISR (only if morse not active) */
+    if (buzzRequest && !MorseIsBusy()) {
+        HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
+        buzzTick = HAL_GetTick();
+        buzzActive = 1;
+        buzzRequest = 0;
     }
 
     /* Buzzer off after 50ms */
@@ -1360,18 +1404,22 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     uint32_t now = HAL_GetTick();
 
-    /* Beep on any EXTI event — GPIO write is ISR-safe */
-    HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
-    buzzTick = now;
-    buzzActive = 1;
+    /* Request beep — handled in main loop (avoids race with MorseUpdate) */
+    buzzRequest = 1;
 
     switch (GPIO_Pin)
     {
     /* ---- Endstops: immediate stop, debounce in diag mode ---- */
     case ES_L_Pin:
         if (!endstopsEn) break;
-        if (!diagMode) { Stepper_Stop(); evtFlags |= EVT_ES_L; }
-        else if (now - lastTick_esL >= DEBOUNCE_MS) {
+        if (!diagMode) {
+            /* edge lockout: react INSTANTLY on first edge, ignore bounce */
+            if (now - lastTick_esL >= DEBOUNCE_MS) {
+                lastTick_esL = now;
+                Stepper_Stop();
+                evtFlags |= EVT_ES_L;
+            }
+        } else if (now - lastTick_esL >= DEBOUNCE_MS) {
             lastTick_esL = now;
             evtFlags |= EVT_ES_L;
         }
@@ -1379,8 +1427,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
     case ES_R_Pin:
         if (!endstopsEn) break;
-        if (!diagMode) { Stepper_Stop(); evtFlags |= EVT_ES_R; }
-        else if (now - lastTick_esR >= DEBOUNCE_MS) {
+        if (!diagMode) {
+            /* edge lockout: react INSTANTLY on first edge, ignore bounce */
+            if (now - lastTick_esR >= DEBOUNCE_MS) {
+                lastTick_esR = now;
+                Stepper_Stop();
+                evtFlags |= EVT_ES_R;
+            }
+        } else if (now - lastTick_esR >= DEBOUNCE_MS) {
             lastTick_esR = now;
             evtFlags |= EVT_ES_R;
         }
@@ -1390,8 +1444,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     case BUTT_JOGL_Pin:
         if (!buttonsEn) break;
         if (HAL_GPIO_ReadPin(BUTT_JOGL_GPIO_Port, BUTT_JOGL_Pin)) {
-            /* release — immediate, no debounce, stop NOW */
+            /* release — instant stop (safe: same prio as TIM2, atomic) */
             Stepper_Stop();
+            lastTick_jogL = now;  /* lockout: ignore press for 30ms after release */
             evtFlags |= EVT_JOGL_UP;
         } else if (now - lastTick_jogL >= DEBOUNCE_MS) {
             /* press — debounced */
@@ -1404,8 +1459,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     case BUTT_JOGR_Pin:
         if (!buttonsEn) break;
         if (HAL_GPIO_ReadPin(BUTT_JOGR_GPIO_Port, BUTT_JOGR_Pin)) {
-            /* release — immediate, no debounce, stop NOW */
+            /* release — instant stop (safe: same prio as TIM2, atomic) */
             Stepper_Stop();
+            lastTick_jogR = now;  /* lockout: ignore press for 30ms after release */
             evtFlags |= EVT_JOGR_UP;
         } else if (now - lastTick_jogR >= DEBOUNCE_MS) {
             /* press — debounced */
