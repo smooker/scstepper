@@ -208,7 +208,7 @@ static void StartMove(int32_t steps)
 {
     if (stepperState != STEPPER_IDLE)
     {
-        printf("stepper busy\r\n");
+        if (motorParams.debug.u & 1) printf("stepper busy\r\n");
         return;
     }
     if (steps == 0) return;
@@ -280,19 +280,19 @@ static void StartMove(int32_t steps)
     /* 3. start */
     HAL_TIM_PWM_Start_IT(stepTim, TIM_CHANNEL_3);
 
-    printf("move %ld steps\r\n", (long)ABS(steps));
+    if (motorParams.debug.u & 1) printf("move %ld steps\r\n", (long)ABS(steps));
 }
 
 void Stepper_Move(float mm)
 {
     int32_t steps = MmToSteps(mm);
-    printf("move %.3f mm -> %ld steps\r\n", mm, steps);
+    if (motorParams.debug.u & 1) printf("move %.3f mm -> %ld steps\r\n", mm, steps);
     StartMove(steps);
 }
 
 void Stepper_MoveSteps(int32_t steps)
 {
-    printf("move %ld steps\r\n", steps);
+    if (motorParams.debug.u & 1) printf("move %ld steps\r\n", steps);
     StartMove(steps);
 }
 
@@ -301,7 +301,7 @@ void Stepper_Jog(float mm)
     /* jog uses jogmm as unit — positive = right, negative = left      */
     float dist = (mm >= 0.0f ? 1.0f : -1.0f) * motorParams.jogmm.f;
     int32_t steps = MmToSteps(dist);
-    printf("jog %.3f mm -> %ld steps\r\n", dist, steps);
+    if (motorParams.debug.u & 1) printf("jog %.3f mm -> %ld steps\r\n", dist, steps);
     StartMove(steps);
 }
 
@@ -309,7 +309,7 @@ void Stepper_RunContinuous(int8_t dir)
 {
     if (stepperState != STEPPER_IDLE)
     {
-        printf("stepper busy\r\n");
+        if (motorParams.debug.u & 1) printf("stepper busy\r\n");
         return;
     }
 
@@ -351,7 +351,7 @@ void Stepper_RunContinuous(int8_t dir)
 
     HAL_TIM_PWM_Start_IT(stepTim, TIM_CHANNEL_3);
 
-    printf("continuous %s\r\n", dir > 0 ? "R" : "L");
+    if (motorParams.debug.u & 1) printf("continuous %s\r\n", dir > 0 ? "R" : "L");
 }
 
 void Stepper_Stop(void)

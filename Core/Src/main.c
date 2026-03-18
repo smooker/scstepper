@@ -1068,7 +1068,7 @@ int main(void)
         static uint8_t wasBusy = 0;
         uint8_t busy = Stepper_IsBusy();
         if (wasBusy && !busy) {
-            PrintPrompt();
+            if (motorParams.debug.u & 1) PrintPrompt();
         }
         wasBusy = busy;
     }
@@ -1400,20 +1400,32 @@ static volatile JogState jogStateR = JOG_IDLE;
 static volatile uint32_t jogPressTickL = 0;
 static volatile uint32_t jogPressTickR = 0;
 
+/*
+ * Input snapshot — read once at ISR entry, use everywhere.
+ * Avoids multiple GPIO reads, guarantees consistent pin state.
+ * GPIOA: ES_L(3), ES_R(4), JOGL(6), JOGR(7)
+ * GPIOB: STEPL(0), STEPR(1)
+ */
+static volatile uint32_t snapA = 0;  /* last GPIOA IDR snapshot */
+static volatile uint32_t snapB = 0;  /* last GPIOB IDR snapshot */
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     uint32_t now = HAL_GetTick();
+
+    /* Snapshot all input pins — ONE read per port */
+    snapA = GPIOA->IDR;
+    snapB = GPIOB->IDR;
 
     /* Request beep — handled in main loop (avoids race with MorseUpdate) */
     buzzRequest = 1;
 
     switch (GPIO_Pin)
     {
-    /* ---- Endstops: immediate stop, debounce in diag mode ---- */
+    /* ---- Endstops: edge lockout, instant stop ---- */
     case ES_L_Pin:
         if (!endstopsEn) break;
         if (!diagMode) {
-            /* edge lockout: react INSTANTLY on first edge, ignore bounce */
             if (now - lastTick_esL >= DEBOUNCE_MS) {
                 lastTick_esL = now;
                 Stepper_Stop();
@@ -1428,7 +1440,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     case ES_R_Pin:
         if (!endstopsEn) break;
         if (!diagMode) {
-            /* edge lockout: react INSTANTLY on first edge, ignore bounce */
             if (now - lastTick_esR >= DEBOUNCE_MS) {
                 lastTick_esR = now;
                 Stepper_Stop();
@@ -1440,16 +1451,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         }
         break;
 
-    /* ---- Jog buttons: both edges, debounce ---- */
+    /* ---- Jog buttons: press debounced, release instant ---- */
     case BUTT_JOGL_Pin:
         if (!buttonsEn) break;
-        if (HAL_GPIO_ReadPin(BUTT_JOGL_GPIO_Port, BUTT_JOGL_Pin)) {
+        if (snapA & BUTT_JOGL_Pin) {
             /* release — instant stop (safe: same prio as TIM2, atomic) */
             Stepper_Stop();
-            lastTick_jogL = now;  /* lockout: ignore press for 30ms after release */
+            lastTick_jogL = now;
             evtFlags |= EVT_JOGL_UP;
         } else if (now - lastTick_jogL >= DEBOUNCE_MS) {
-            /* press — debounced */
+            if (!(snapA & ES_L_Pin)) break;  /* ES_L active = blocked */
             lastTick_jogL = now;
             jogPressTickL = now;
             evtFlags |= EVT_JOGL_DN;
@@ -1458,21 +1469,23 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
     case BUTT_JOGR_Pin:
         if (!buttonsEn) break;
-        if (HAL_GPIO_ReadPin(BUTT_JOGR_GPIO_Port, BUTT_JOGR_Pin)) {
+        if (snapA & BUTT_JOGR_Pin) {
             /* release — instant stop (safe: same prio as TIM2, atomic) */
             Stepper_Stop();
-            lastTick_jogR = now;  /* lockout: ignore press for 30ms after release */
+            lastTick_jogR = now;
             evtFlags |= EVT_JOGR_UP;
         } else if (now - lastTick_jogR >= DEBOUNCE_MS) {
-            /* press — debounced */
+            if (!(snapA & ES_R_Pin)) break;  /* ES_R active = blocked */
             lastTick_jogR = now;
             jogPressTickR = now;
             evtFlags |= EVT_JOGR_DN;
         }
         break;
 
+    /* ---- Step buttons: press debounced, release ignored ---- */
     case BUTT_STEPL_Pin:
         if (!buttonsEn) break;
+        if (!(snapA & ES_L_Pin)) break;      /* ES_L active = blocked */
         if (now - lastTick_stepL >= DEBOUNCE_MS) {
             lastTick_stepL = now;
             evtFlags |= EVT_STEPL;
@@ -1481,6 +1494,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
     case BUTT_STEPR_Pin:
         if (!buttonsEn) break;
+        if (!(snapA & ES_R_Pin)) break;      /* ES_R active = blocked */
         if (now - lastTick_stepR >= DEBOUNCE_MS) {
             lastTick_stepR = now;
             evtFlags |= EVT_STEPR;
@@ -1628,11 +1642,11 @@ void ProcessEvents(void)
     /* ---- Jog Left (CCW) ---- */
     if (flags & EVT_JOGL_DN) {
         if (diagMode) { printf("JOGL_DN\r\n"); PrintPrompt(); }
-        else if (esBlocked == -1) { if (motorParams.debug.u & 1) { printf("blocked: ES_L\r\n"); } }
+        else if (!(snapA & ES_L_Pin)) { /* ES_L active LOW = don't go left */ }
         else {
             jogStateL = JOG_PRESSED;
             Stepper_Jog(-1.0f);   /* immediate short jog */
-            esBlocked = 0;        /* moving away from ES_R clears block */
+            esBlocked = 0;
         }
     }
     if (flags & EVT_JOGL_UP) {
@@ -1647,11 +1661,11 @@ void ProcessEvents(void)
     /* ---- Jog Right (CW) ---- */
     if (flags & EVT_JOGR_DN) {
         if (diagMode) { printf("JOGR_DN\r\n"); PrintPrompt(); }
-        else if (esBlocked == 1) { if (motorParams.debug.u & 1) { printf("blocked: ES_R\r\n"); } }
+        else if (!(snapA & ES_R_Pin)) { /* ES_R active LOW = don't go right */ }
         else {
             jogStateR = JOG_PRESSED;
             Stepper_Jog(1.0f);    /* immediate short jog */
-            esBlocked = 0;        /* moving away from ES_L clears block */
+            esBlocked = 0;
         }
     }
     if (flags & EVT_JOGR_UP) {
@@ -1667,24 +1681,26 @@ void ProcessEvents(void)
     if (!diagMode) {
         if (jogStateL == JOG_PRESSED && !Stepper_IsBusy()
             && (now - jogPressTickL >= JOG_HOLD_MS)) {
-            if (esBlocked == -1) { jogStateL = JOG_IDLE; }
+            if (!(GPIOA->IDR & ES_L_Pin)) { jogStateL = JOG_IDLE; }
             else { jogStateL = JOG_CONT; Stepper_RunContinuous(-1); }
         }
         if (jogStateR == JOG_PRESSED && !Stepper_IsBusy()
             && (now - jogPressTickR >= JOG_HOLD_MS)) {
-            if (esBlocked == 1) { jogStateR = JOG_IDLE; }
+            if (!(GPIOA->IDR & ES_R_Pin)) { jogStateR = JOG_IDLE; }
             else { jogStateR = JOG_CONT; Stepper_RunContinuous(1); }
         }
     }
 
-    /* ---- Step buttons ---- */
+    /* ---- Step buttons (HW pin check — don't move into active endstop!) ---- */
     if (flags & EVT_STEPL) {
         if (diagMode) { printf("BUTT_STEPL\r\n"); PrintPrompt(); }
-        else          Stepper_Move(-motorParams.stepmm.f);
+        else if (!(GPIOA->IDR & ES_L_Pin)) { /* ES_L active LOW = blocked */ }
+        else { Stepper_Move(-motorParams.stepmm.f); esBlocked = 0; }
     }
     if (flags & EVT_STEPR) {
         if (diagMode) { printf("BUTT_STEPR\r\n"); PrintPrompt(); }
-        else          Stepper_Move(motorParams.stepmm.f);
+        else if (!(GPIOA->IDR & ES_R_Pin)) { /* ES_R active LOW = blocked */ }
+        else { Stepper_Move(motorParams.stepmm.f); esBlocked = 0; }
     }
 }
 

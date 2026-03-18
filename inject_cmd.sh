@@ -39,7 +39,7 @@ FOOTER
 
 arm-none-eabi-gdb -nx -batch \
   -ex "set mem inaccessible-by-default off" \
-  -ex "target extended-remote /dev/ttyACM0" \
+  -ex "target extended-remote /dev/ttyBmpGdb" \
   -ex "monitor swdp_scan" \
   -ex "attach 1" \
   -ex "file ./build/stepper_sc.elf" \

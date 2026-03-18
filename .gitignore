@@ -5,3 +5,4 @@ build/
 *.map
 *.pyc
 __pycache__/
+.gdb_history
