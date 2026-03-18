@@ -26,7 +26,7 @@ Via **Black Magic Probe** on `/dev/ttyBmpGdb`:
 
 SVD register viewer: `firmware/PyCortexMDebug/` (git submodule) + `STM32F411.svd`
 
-See `doc/build-and-debug.md` for full instructions.
+See [docs/build-and-debug.md](docs/build-and-debug.md) for full instructions.
 
 ## Key Signals
 
@@ -56,4 +56,5 @@ Flash sectors 6 & 7, 7 parameters: `mmpsmax`, `mmpsmin`, `dvdtacc`, `dvdtdecc`, 
 
 ## Docs
 
+- [Build and Debug](docs/build-and-debug.md) — toolchain setup, GDB, flashing, pinout, CLI commands
 - [Capture Analysis](docs/capture_analysis.md) — FX2/sigrok logic capture of `move 10`, ramp bug analysis
