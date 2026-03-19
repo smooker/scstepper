@@ -39,6 +39,8 @@ Connect via serial terminal (minicom, screen, etc.) at any baud rate (USB CDC).
 | `steps <n>` | Move by raw step count | signed integer |
 | `stop` | Decelerate and stop | — |
 | `home` | Homing procedure — find ES_L, backoff, park | — |
+| `range` | Measure travel range between endstops; requires `home`; returns to 0.00 | — |
+| `moveto <mm>` | Absolute positioning; requires `home` + `range`; beeps on invalid target | position in mm |
 
 ### Homing Procedure (`home`)
 
@@ -112,6 +114,23 @@ Buttons start **disabled** at boot — enabled after input self-test passes (mor
 
 Jog button release triggers immediate stop — `Stepper_Stop()` called directly in ISR. After release, a 50ms lockout (`DEBOUNCE_REL_MS`) prevents mechanical bounce from re-triggering a press event (which would cause a spurious second movement).
 
+## Button Combo: Homing Gesture
+
+When the machine is stopped at ES_L (after hitting the left endstop):
+
+1. **Hold JOGL** (left jog button)
+2. **Press JOGR** (right jog button) while JOGL is held
+
+→ Triggers the full homing procedure (`home`)
+
+**During the procedure**: both buttons must remain held — 300ms tolerance for non-simultaneous release.
+
+**On button release**: procedure aborts → `home: ABORT`
+
+**On success**: 1 second pause → 150ms beep → `\r\n   0.00 >`
+
+Note: homing progress messages (`home: approach...`, `home: ES_L confirmed...` etc.) are only printed when `debug & 1` is set. `home: ABORT` is always printed.
+
 ## Endstops
 
 | Endstop | Pin | Behavior |
@@ -170,7 +189,9 @@ Before homing, position is unknown:
 XXXX.XX >
 ```
 
-Position updates automatically when the motor stops (from any source: jog, step, CDC command, endstop).
+Position updates automatically when the motor stops (from any source: jog, step, CDC command, endstop). On every motor stop (busy→idle transition) the firmware prints **two blank lines** before the prompt (`\r\n\r\n`). Blocking commands (`home`, `range`, button combo) end the same way.
+
+Prompt format is `%7.2f > ` (7-character width, aligns with `XXXX.XX >`).
 
 ## EEPROM
 
@@ -191,3 +212,4 @@ with wear-leveling. Use `save` command after changing parameters.
 - Endstop 30ms edge lockout in normal mode — EMI / vibration protection
 - Endstop direction blocking prevents re-entering the same endstop
 - Endstop direction check in ISR (snapA) — blocked jogs rejected before queuing
+- `moveto <mm>` requires both `home` AND `range` to have been run — out-of-range targets (< 0 or > range) produce a 100ms beep and are rejected without movement
