@@ -110,7 +110,7 @@ Buttons start **disabled** at boot — enabled after input self-test passes (mor
 | STEP L | PB0 | Move CCW by `stepmm` with ramps | — |
 | STEP R | PB1 | Move CW by `stepmm` with ramps | — |
 
-Jog button release triggers immediate stop (no debounce) with Stepper_Stop() called directly in ISR for minimum latency.
+Jog button release triggers immediate stop — `Stepper_Stop()` called directly in ISR. After release, a 50ms lockout (`DEBOUNCE_REL_MS`) prevents mechanical bounce from re-triggering a press event (which would cause a spurious second movement).
 
 ## Endstops
 
@@ -119,7 +119,7 @@ Jog button release triggers immediate stop (no debounce) with Stepper_Stop() cal
 | ES_L | PA3 | Immediate deceleration stop. Falling edge (active low) |
 | ES_R | PA4 | Immediate deceleration stop. Falling edge (active low) |
 
-Endstops have **no software debounce** in normal mode (safety first).
+Endstops have a **30ms edge lockout** in normal mode — `Stepper_Stop()` fires on the first edge, repeated edges within 30ms are ignored (EMI / vibration protection).
 In `diag_inputs` mode, endstops have 30ms debounce and only print — no stop.
 During `home`, EXTI endstops are disabled — GPIO polling with debounce is used instead.
 
@@ -187,5 +187,7 @@ with wear-leveling. Use `save` command after changing parameters.
 - Homing uses debounced GPIO polling (not EXTI) to avoid EMI false triggers
 - EMI from solar inverters / stepper drivers can cause false button/endstop triggers without hardware filtering (external pull-ups + caps recommended on PCB)
 - Buttons disabled at boot until input self-test passes
-- Jog release stops motor immediately (ISR-level, no debounce delay)
+- Jog release stops motor immediately (ISR-level) + 50ms lockout suppresses bounce re-press
+- Endstop 30ms edge lockout in normal mode — EMI / vibration protection
 - Endstop direction blocking prevents re-entering the same endstop
+- Endstop direction check in ISR (snapA) — blocked jogs rejected before queuing

@@ -1,5 +1,28 @@
 # CHANGELOG — STM32F411CEU6 Stepper Controller
 
+## [Unreleased] — 2026-03-19
+
+### Fixed
+- Jog bounce re-press after release: `lastTick_jog` now reset on release,
+  suppressing bounce-press events for `DEBOUNCE_REL_MS` (50ms) after release.
+  Affected both short-press (JOG_STEP) and long-hold (JOG_CONT) modes.
+
+### Changed
+- `DEBOUNCE_REL_MS = 50ms` introduced (separate from `DEBOUNCE_MS = 30ms`).
+  Jog press debounce after release is 50ms — switches bounce more on release.
+- Jog press endstop check moved into ISR via `snapA` — blocked directions
+  rejected immediately, no event queued to main loop.
+- Removed redundant `Stepper_Stop()` from `ProcessEvents` EVT_JOGx_UP handler —
+  stop already guaranteed by ISR.
+- `snapA = GPIOA->IDR` snapshot at ISR entry — all pin checks use consistent state.
+- `buzzRequest` flag: buzzer deferred to main loop (avoids race with MorseUpdate).
+- NVIC priorities fixed via `FixNVIC_Priorities()`:
+  TIM2 + ES endstops at priority 0, jog at priority 0, step at priority 2, USB at 3.
+  Makes `Stepper_Stop()` from EXTI ISR safe without `__disable_irq()`.
+- Endstop edge lockout (30ms) in normal mode — EMI/vibration protection.
+
+## [e243560] — 2026-03-18 (Input snapshot, ISR endstop blocking, debug guards)
+
 ## [Unreleased] — 2026-03-04 (lookup table branch, not committed)
 **Active firmware — stepper.c mtime 2026-03-04 09:32**
 

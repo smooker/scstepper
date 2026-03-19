@@ -1372,7 +1372,8 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* ---- Button/endstop event flags (set in ISR, processed in main) ------- */
-#define DEBOUNCE_MS  30
+#define DEBOUNCE_MS       30   /* press debounce */
+#define DEBOUNCE_REL_MS   50   /* release lockout (switches bounce more on release) */
 
 #define EVT_ES_L      (1U << 0)
 #define EVT_ES_R      (1U << 1)
@@ -1455,11 +1456,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     case BUTT_JOGL_Pin:
         if (!buttonsEn) break;
         if (snapA & BUTT_JOGL_Pin) {
-            /* release — instant stop (safe: same prio as TIM2, atomic) */
+            /* release — unconditional decel (safe: same prio as TIM2, atomic) */
             Stepper_Stop();
             lastTick_jogL = now;
             evtFlags |= EVT_JOGL_UP;
-        } else if (now - lastTick_jogL >= DEBOUNCE_MS) {
+        } else if (now - lastTick_jogL >= DEBOUNCE_REL_MS) {
             if (!(snapA & ES_L_Pin)) break;  /* ES_L active = blocked */
             lastTick_jogL = now;
             jogPressTickL = now;
@@ -1470,11 +1471,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     case BUTT_JOGR_Pin:
         if (!buttonsEn) break;
         if (snapA & BUTT_JOGR_Pin) {
-            /* release — instant stop (safe: same prio as TIM2, atomic) */
+            /* release — unconditional decel (safe: same prio as TIM2, atomic) */
             Stepper_Stop();
             lastTick_jogR = now;
             evtFlags |= EVT_JOGR_UP;
-        } else if (now - lastTick_jogR >= DEBOUNCE_MS) {
+        } else if (now - lastTick_jogR >= DEBOUNCE_REL_MS) {
             if (!(snapA & ES_R_Pin)) break;  /* ES_R active = blocked */
             lastTick_jogR = now;
             jogPressTickR = now;
@@ -1651,10 +1652,6 @@ void ProcessEvents(void)
     }
     if (flags & EVT_JOGL_UP) {
         if (diagMode) { printf("JOGL_UP\r\n"); PrintPrompt(); }
-        else if (jogStateL == JOG_CONT) {
-            Stepper_Stop();
-            if (motorParams.debug.u & 1) { printf("jog L stop\r\n"); }
-        }
         jogStateL = JOG_IDLE;
     }
 
@@ -1670,10 +1667,6 @@ void ProcessEvents(void)
     }
     if (flags & EVT_JOGR_UP) {
         if (diagMode) { printf("JOGR_UP\r\n"); PrintPrompt(); }
-        else if (jogStateR == JOG_CONT) {
-            Stepper_Stop();
-            if (motorParams.debug.u & 1) { printf("jog R stop\r\n"); }
-        }
         jogStateR = JOG_IDLE;
     }
 

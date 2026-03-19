@@ -43,13 +43,16 @@ evtFlags &= ~flags;
 __enable_irq();
 ```
 
-### 4. Stepper_Stop() called from EXTI ISR without critical section — HIGH PRIORITY
+### 4. Stepper_Stop() called from EXTI ISR without critical section — **FIXED**
 
 Endstop and jog-release handlers in `HAL_GPIO_EXTI_Callback` call `Stepper_Stop()`.
 `Stepper_Stop()` modifies `stepsRemaining`, `decelIndex`, `stepperState` — same vars
 modified by `Stepper_ISR()`. TIM2 ISR can preempt EXTI mid-update, causing torn state.
 
-**Fix:** Wrap state changes in `Stepper_Stop()` with `__disable_irq()` / `__enable_irq()`.
+**Fix applied:** `FixNVIC_Priorities()` sets TIM2, ES_L, ES_R, and JOG EXTI all to
+priority 0. Same-priority ISRs cannot preempt each other on Cortex-M4 — this makes
+`Stepper_Stop()` from EXTI ISR atomic with respect to TIM2 ISR, without needing
+`__disable_irq()` inside `Stepper_Stop()`.
 
 ### 5. Error_Handler deadlock (main.c:1645-1653)
 
