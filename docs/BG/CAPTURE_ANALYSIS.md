@@ -172,6 +172,56 @@ BUTT_JOGR_Pin:
 
 Засяга: кратък jog (JOG_STEP) и дълъг hold (JOG_CONT). И двата бутона (L и R).
 
+## 6. Детерминизъм на JOG_STEP и тайминг на JOG_CONT (wip milestone)
+
+**Параметри:** mmpsmax=1.0 mm/s, mmpsmin=0.5 mm/s, dvdtacc=50, dvdtdecc=100, spmm=400, jogmm=0.2 mm, stepmm=1.0 mm
+
+### Открит бъг чрез capture: JOG_STEP не е детерминистичен
+
+Преди поправката `Stepper_Stop()` се викал безусловно при всяко пускане на jog бутон —
+включително по средата на фиксирано JOG_STEP движение. Пускането на бутона преди 80-те
+импулса да свършат прекъсвало движението.
+
+**[`captures/capture_smooker.sr`](../../captures/capture_smooker.sr)** (100 kHz) — **преди поправка:**
+
+| Burst | Импулси | Забележка |
+|-------|---------|-----------|
+| 3, 6–9, 11 | 80 | Бутонът пуснат след края на движението |
+| 1, 2, 4, 5, 10, 12–66 | 41–75 | Бутонът пуснат рано → моторът спрян преждевременно |
+
+След поправка (проверка `jogStateL/R == JOG_CONT` в ISR UP handler):
+43/43 burst-а = точно **80 импулса**. JOG_STEP вече е напълно детерминистичен.
+
+### Верификация на STEP бутон
+
+**[`captures/capture_smooker_steps_plus_2_jogs.sr`](../../captures/capture_smooker_steps_plus_2_jogs.sr)** (100 kHz):
+
+| Burst | Импулси | Тип |
+|-------|---------|-----|
+| 1–5 | 400 | STEP (stepmm=1.0 mm × 400 spm) |
+| 6 | 800 | Два STEP слети (gap < 10 ms) |
+| 7–8 | 80 | JOG (jogmm=0.2 mm × 400 spm) |
+
+### Тайминг JOG_STEP + JOG_CONT
+
+**[`captures/capture_smooker_jogsteps_jogcont.sr`](../../captures/capture_smooker_jogsteps_jogcont.sr)** (100 kHz):
+
+Всеки burst = JOG_STEP (кратко натискане) последван от JOG_CONT (задържане >300 ms):
+
+| Фаза | Измерено | Изчислено |
+|------|----------|-----------|
+| Продължителност на JOG_STEP | ~203 ms | 80 стъпки × ~2.5 ms/стъпка |
+| Пауза (мотор idle → JOG_CONT) | **97 ms** | JOG_HOLD_MS(300) − продължителност на JOG_STEP |
+| JOG_CONT ускорение | 3400→2400 µs (3 стъпки) | dvdtacc=50 mm/s², кратка рампа |
+| JOG_CONT забавяне | 2400→4800 µs (2 стъпки) | dvdtdecc=100 mm/s² |
+
+97 ms паузата потвърждава, че JOG_HOLD_MS=300 ms се брои от натискане на бутона, не от idle на мотора.
+
+**На хартия vs. на практика:**
+- Теорията казваше, че JOG_STEP винаги прави 80 импулса — capture-ът показа обратното (41–79)
+- Capture-ът идентифицира причината: безусловен `Stepper_Stop()` при всяко пускане
+- След поправката теория и практика съвпадат: 43/43 × 80 импулса ✓
+
 ## Захванати файлове
 
 | Файл | Честота | Съдържание | Параметри |
@@ -184,6 +234,9 @@ BUTT_JOGR_Pin:
 | `capture_combo4_speed.sr` | 1 MHz | Същото, по-дълъг прозорец | dvdtacc=50, dvdtdecc=100 |
 | `capture_jog_speed.sr` | 1 MHz | Натискане/пускане на jog бутон | — |
 | `capture_triangle_speed.sr` | 100 kHz | Само триъгълен профил + скорост | dvdtacc=dvdtdecc=50 |
+| [`capture_smooker.sr`](../../captures/capture_smooker.sr) | 100 kHz | Повтаряемост на JOG_STEP — преди/след поправка | jogmm=0.2, spmm=400 |
+| [`capture_smooker_steps_plus_2_jogs.sr`](../../captures/capture_smooker_steps_plus_2_jogs.sr) | 100 kHz | 5×STEP=400p + 2×JOG=80p | stepmm=1.0, jogmm=0.2 |
+| [`capture_smooker_jogsteps_jogcont.sr`](../../captures/capture_smooker_jogsteps_jogcont.sr) | 100 kHz | Тайминг JOG_STEP + JOG_CONT | jogmm=0.2, JOG_HOLD_MS=300 |
 
 ### Преглед
 

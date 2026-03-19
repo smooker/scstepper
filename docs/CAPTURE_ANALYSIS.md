@@ -140,6 +140,59 @@ Captures at 1 MHz (capture_combo_final_speed.sr) yield significantly more accura
 4. **Triangular profile** correctly does not reach mmpsmax on short movements
 5. **Both directions are identical** — DIR inversion does not affect timing
 
+## 5. JOG_STEP Determinism and JOG_CONT Timing (wip milestone)
+
+**Parameters:** mmpsmax=1.0 mm/s, mmpsmin=0.5 mm/s, dvdtacc=50, dvdtdecc=100, spmm=400, jogmm=0.2 mm, stepmm=1.0 mm
+
+### Bug found via capture: JOG_STEP was not deterministic
+
+Before the fix, `Stepper_Stop()` was called unconditionally on every jog button release —
+including mid-move during a fixed JOG_STEP. Releasing the button before 80 pulses completed
+cut the move short.
+
+**[`captures/capture_smooker.sr`](../captures/capture_smooker.sr)** (100 kHz) — **before fix:**
+
+| Burst | Pulses | Note |
+|-------|--------|------|
+| 3, 6–9, 11 | 80 | Button released after move completed |
+| 1, 2, 4, 5, 10, 12–66 | 41–75 | Button released early → motor stopped prematurely |
+
+After fix (`jogStateL/R == JOG_CONT` check in ISR UP handler):
+
+**[`captures/capture_smooker.sr`](../captures/capture_smooker.sr)** re-captured — **after fix:**
+43/43 bursts = exactly **80 pulses**. JOG_STEP is now fully deterministic.
+
+### STEP button verification
+
+**[`captures/capture_smooker_steps_plus_2_jogs.sr`](../captures/capture_smooker_steps_plus_2_jogs.sr)** (100 kHz):
+
+| Burst | Pulses | Type |
+|-------|--------|------|
+| 1–5 | 400 | STEP (stepmm=1.0 mm × 400 spm) |
+| 6 | 800 | Two STEPs merged (gap < 10 ms) |
+| 7–8 | 80 | JOG (jogmm=0.2 mm × 400 spm) |
+
+### JOG_STEP + JOG_CONT timing
+
+**[`captures/capture_smooker_jogsteps_jogcont.sr`](../captures/capture_smooker_jogsteps_jogcont.sr)** (100 kHz):
+
+Each burst = JOG_STEP (short press) followed immediately by JOG_CONT (held >300 ms):
+
+| Phase | Measured | Calculated |
+|-------|----------|------------|
+| JOG_STEP duration | ~203 ms | 80 steps × ~2.5 ms/step |
+| Gap (motor idle → JOG_CONT start) | **97 ms** | JOG_HOLD_MS(300) − JOG_STEP_duration |
+| JOG_CONT accel | 3400→2400 µs (3 steps) | dvdtacc=50 mm/s², short ramp |
+| JOG_CONT decel | 2400→4800 µs (2 steps) | dvdtdecc=100 mm/s² |
+
+The 97 ms gap confirms JOG_HOLD_MS=300 ms is measured from button press, not from motor idle.
+On paper the code was correct; the capture proved it.
+
+**On paper vs. in practice:**
+- Theory said JOG_STEP always does 80 pulses — capture said otherwise (41–79)
+- Capture identified the root cause: unconditional `Stepper_Stop()` on every release
+- After fix, theory and practice agree: 43/43 × 80 pulses
+
 ## Captured Files
 
 | File | Frequency | Content | Parameters |
@@ -152,6 +205,9 @@ Captures at 1 MHz (capture_combo_final_speed.sr) yield significantly more accura
 | `capture_combo4_speed.sr` | 1 MHz | Same, longer capture window | dvdtacc=50, dvdtdecc=100 |
 | `capture_jog_speed.sr` | 1 MHz | Jog button press/release | — |
 | `capture_triangle_speed.sr` | 100 kHz | Triangle profile only + speed | dvdtacc=dvdtdecc=50 |
+| [`capture_smooker.sr`](../captures/capture_smooker.sr) | 100 kHz | JOG_STEP repeatability — before/after fix | jogmm=0.2, spmm=400 |
+| [`capture_smooker_steps_plus_2_jogs.sr`](../captures/capture_smooker_steps_plus_2_jogs.sr) | 100 kHz | 5×STEP=400p + 2×JOG=80p | stepmm=1.0, jogmm=0.2 |
+| [`capture_smooker_jogsteps_jogcont.sr`](../captures/capture_smooker_jogsteps_jogcont.sr) | 100 kHz | JOG_STEP + JOG_CONT timing | jogmm=0.2, JOG_HOLD_MS=300 |
 
 ### Viewing
 
