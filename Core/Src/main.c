@@ -184,6 +184,7 @@ static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void ProcessEvents(void);
 void RunHome(void);
+void RunHomeEx(uint8_t fromButtons);
 void RunCombo(void);
 void PrintPrompt(void);
 void MorseStart(const char *text);
@@ -198,7 +199,7 @@ void PrintPrompt(void)
 {
     if (posHomed) {
         float mm = (float)posSteps / (float)motorParams.spmm.u;
-        printf("%8.2f > ", mm);
+        printf("%7.2f > ", mm);
     } else {
         printf("XXXX.XX > ");
     }
@@ -1383,6 +1384,7 @@ static void MX_GPIO_Init(void)
 #define EVT_JOGR_UP   (1U << 5)
 #define EVT_STEPL     (1U << 6)
 #define EVT_STEPR     (1U << 7)
+#define EVT_HOME      (1U << 8)  /* home combo: ES_L hit + JOGL held + JOGR pressed */
 
 #define JOG_HOLD_MS   300
 
@@ -1476,10 +1478,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
             lastTick_jogR = now;
             evtFlags |= EVT_JOGR_UP;
         } else if (now - lastTick_jogR >= DEBOUNCE_REL_MS) {
-            if (!(snapA & ES_R_Pin)) break;  /* ES_R active = blocked */
-            lastTick_jogR = now;
-            jogPressTickR = now;
-            evtFlags |= EVT_JOGR_DN;
+            /* home combo: at ES_L + JOGL held + JOGR pressed */
+            if (esBlocked == -1 && !(snapA & BUTT_JOGL_Pin)) {
+                lastTick_jogR = now;
+                evtFlags |= EVT_HOME;
+            } else {
+                if (!(snapA & ES_R_Pin)) break;  /* ES_R active = blocked */
+                lastTick_jogR = now;
+                jogPressTickR = now;
+                evtFlags |= EVT_JOGR_DN;
+            }
         }
         break;
 
@@ -1508,10 +1516,39 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 }
 
 /* Homing: approach ES_L at homespd CCW, backoff at mmpsmin CW until release, +1mm */
+/* Returns 1 if both JOGL and JOGR are still held (for combo abort check).
+   homeFromButtons=0 means CDC command — no abort check needed. */
+static int HomeButtonsHeld(void) {
+    return (HAL_GPIO_ReadPin(BUTT_JOGL_GPIO_Port, BUTT_JOGL_Pin) == GPIO_PIN_RESET) &&
+           (HAL_GPIO_ReadPin(BUTT_JOGR_GPIO_Port, BUTT_JOGR_Pin) == GPIO_PIN_RESET);
+}
+
 void RunHome(void)
+{
+    RunHomeEx(0);
+}
+
+void RunHomeEx(uint8_t fromButtons)
 {
     float savedMax = motorParams.mmpsmax.f;
     float savedMin = motorParams.mmpsmin.f;
+    uint8_t dbg = motorParams.debug.u & 1;
+    uint8_t homed = 0;
+
+    /* Debounced abort: buttons must be released for HOME_RELEASE_MS to abort.
+       Tolerates non-simultaneous finger release. */
+#define HOME_RELEASE_MS 300
+    uint32_t homePressLost = 0;
+#define HOME_ABORT_CHECK(stop_motor) \
+    if (fromButtons) { \
+        if (!HomeButtonsHeld()) { \
+            if (!homePressLost) homePressLost = HAL_GetTick() | 1; \
+            else if (HAL_GetTick() - homePressLost >= HOME_RELEASE_MS) { \
+                if (stop_motor) { Stepper_Stop(); while (Stepper_IsBusy()) { HAL_Delay(5); } } \
+                goto home_restore; \
+            } \
+        } else { homePressLost = 0; } \
+    }
 
     endstopsEn = 0;  /* ignore EXTI — we poll manually to avoid EMI false triggers */
     buttonsEn = 0;
@@ -1519,79 +1556,87 @@ void RunHome(void)
 
     /* Check if already on ES_L */
     if (HAL_GPIO_ReadPin(ES_L_GPIO_Port, ES_L_Pin) == GPIO_PIN_RESET) {
-        printf("home: already on ES_L, backoff\r\n");
+        if (dbg) printf("home: already on ES_L, backoff\r\n");
     } else {
-        /* Phase 1: approach ES_L at homespd (CCW), polling with debounce */
-        printf("home: approach ES_L @ %.1f mm/s CCW\r\n", motorParams.homespd.f);
+        /* Phase 1: approach ES_L at homespd (CCW), debounced ES poll */
+        if (dbg) printf("home: approach ES_L @ %.1f mm/s CCW\r\n", motorParams.homespd.f);
         motorParams.mmpsmax.f = motorParams.homespd.f;
-        Stepper_Move(-9999.0f);  /* long CCW move */
-        while (Stepper_IsBusy()) {
-            /* debounced poll: ES_L must read LOW 10 times in a row (50ms) */
-            uint8_t lowCount = 0;
-            while (lowCount < 10 && Stepper_IsBusy()) {
-                if (HAL_GPIO_ReadPin(ES_L_GPIO_Port, ES_L_Pin) == GPIO_PIN_RESET)
-                    lowCount++;
-                else
-                    lowCount = 0;
-                HAL_Delay(5);
-            }
-            if (lowCount >= 10) {
-                Stepper_Stop();
-                while (Stepper_IsBusy()) { HAL_Delay(10); }
-                break;
-            }
+        Stepper_Move(-9999.0f);
+        uint8_t lowCount = 0;
+        while (lowCount < 10 && Stepper_IsBusy()) {
+            HOME_ABORT_CHECK(1)
+            if (HAL_GPIO_ReadPin(ES_L_GPIO_Port, ES_L_Pin) == GPIO_PIN_RESET)
+                lowCount++;
+            else
+                lowCount = 0;
+            HAL_Delay(5);
         }
-        printf("home: ES_L confirmed, settling...\r\n");
+        Stepper_Stop();
+        while (Stepper_IsBusy()) { HAL_Delay(5); }
+        if (dbg) printf("home: ES_L confirmed, settling...\r\n");
 
-        /* Phase 2: settle — wait for vibrations */
-        HAL_Delay(500);
+        /* Phase 2: settle — 500ms, abort-checked every 10ms */
+        uint32_t settleEnd = HAL_GetTick() + 500;
+        while (HAL_GetTick() < settleEnd) {
+            HOME_ABORT_CHECK(0)
+            HAL_Delay(10);
+        }
     }
 
     /* Phase 3: backoff at homespd/10 (CW) until ES_L releases (debounced) */
     float backoffSpd = motorParams.homespd.f / 10.0f;
     if (backoffSpd < 0.1f) backoffSpd = 0.1f;
-    printf("home: backoff @ %.2f mm/s CW\r\n", backoffSpd);
+    if (dbg) printf("home: backoff @ %.2f mm/s CW\r\n", backoffSpd);
     motorParams.mmpsmax.f = backoffSpd;
-    motorParams.mmpsmin.f = backoffSpd;  /* no ramp — constant slow speed */
-    endstopsEn = 0;  /* don't let ES_L re-trigger during backoff */
-    Stepper_Move(9999.0f);  /* long CW move */
-    while (Stepper_IsBusy()) {
-        /* debounced poll: ES_L must read HIGH 10 times in a row (50ms) */
-        uint8_t highCount = 0;
-        while (highCount < 10 && Stepper_IsBusy()) {
-            if (HAL_GPIO_ReadPin(ES_L_GPIO_Port, ES_L_Pin) == GPIO_PIN_SET)
-                highCount++;
-            else
-                highCount = 0;
-            HAL_Delay(5);
-        }
-        if (highCount >= 10) {
-            Stepper_Stop();
-            while (Stepper_IsBusy()) { HAL_Delay(10); }
-            break;
-        }
+    motorParams.mmpsmin.f = backoffSpd;
+    Stepper_Move(9999.0f);
+    uint8_t highCount = 0;
+    while (highCount < 10 && Stepper_IsBusy()) {
+        HOME_ABORT_CHECK(1)
+        if (HAL_GPIO_ReadPin(ES_L_GPIO_Port, ES_L_Pin) == GPIO_PIN_SET)
+            highCount++;
+        else
+            highCount = 0;
+        HAL_Delay(5);
     }
-    printf("home: ES_L released, +%lu steps CW\r\n", parkSteps);
+    Stepper_Stop();
+    while (Stepper_IsBusy()) { HAL_Delay(5); }
+    if (dbg) printf("home: ES_L released, +%lu steps CW\r\n", parkSteps);
 
-    /* Phase 4: move parkSteps CW away from switch */
+    /* Phase 4: park — move homeoff steps CW, abort-checked during move */
     HAL_Delay(200);
     Stepper_MoveSteps((int32_t)parkSteps);
     while (Stepper_IsBusy()) {
+        HOME_ABORT_CHECK(1)
         HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin);
         HAL_Delay(50);
     }
 
-    /* Set home position */
+    /* Home achieved */
     posSteps = 0;
     posHomed = 1;
+    homed = 1;
 
-    /* Restore speed and endstops */
+    /* Phase 5: 1s grace period then beep — machine is active */
+    if (fromButtons) {
+        HAL_Delay(1000);
+        HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
+        HAL_Delay(150);
+        HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_SET);
+    }
+
+home_restore:
     motorParams.mmpsmax.f = savedMax;
     motorParams.mmpsmin.f = savedMin;
     endstopsEn = 1;
     buttonsEn = 1;
     esBlocked = 0;
-    printf("home: done\r\n");
+    if (!homed && fromButtons) printf("home: ABORT\r\n");
+    printf("\r\n");
+    PrintPrompt();
+
+#undef HOME_RELEASE_MS
+#undef HOME_ABORT_CHECK
 }
 
 /* Combo test: 4 moves with wait between each */
@@ -1694,6 +1739,11 @@ void ProcessEvents(void)
         if (diagMode) { printf("BUTT_STEPR\r\n"); PrintPrompt(); }
         else if (!(GPIOA->IDR & ES_R_Pin)) { /* ES_R active LOW = blocked */ }
         else { Stepper_Move(motorParams.stepmm.f); esBlocked = 0; }
+    }
+
+    /* ---- Home combo (ES_L hit + JOGL held + JOGR pressed) ---- */
+    if (flags & EVT_HOME) {
+        if (!diagMode) RunHomeEx(1);
     }
 }
 
