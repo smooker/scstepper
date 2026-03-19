@@ -14,6 +14,8 @@ Asymmetric ramps: `dvdtacc` and `dvdtdecc` can differ for independent accel/dece
 - Direction: PB14 (DIR pin), set before first pulse
 - Direction inversion: `dirinv` param XORs DIR output for optocoupled drivers
 - Position tracking: `posSteps` counter in ISR, absolute position after homing
+- `posHomed`: flag set after successful homing; required by `range` and `moveto`
+- `rangeUsableMm`: set by `range` command (raw − homeoff mm); required by `moveto`
 
 ### Parameters (saved to EEPROM)
 
@@ -50,6 +52,8 @@ Asymmetric ramps: `dvdtacc` and `dvdtdecc` can differ for independent accel/dece
 | combo                | Run 4 test moves (2 tri + 2 trap) |
 | help                 | Print command list                 |
 | home                 | Homing: find ES_L, backoff, park     |
+| range                | Measure travel range between endstops; requires posHomed |
+| moveto \<mm\>        | Absolute positioning; requires home + range |
 | morse \<text\>       | Play morse code (non-blocking)       |
 | buttons on/off       | Enable/disable button EXTI           |
 | endstops on/off      | Enable/disable endstop EXTI          |

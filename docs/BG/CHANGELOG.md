@@ -1,8 +1,27 @@
 # ИСТОРИЯ НА ПРОМЕНИТЕ — STM32F411CEU6 Stepper контролер
 
-## [Непубликувано] — 2026-03-19
+## [Непубликувано] — 2026-03-19 (v1.0 milestone)
 
-### Поправено
+### Добавено
+- **Жест за хоминг от бутони**: при ES_L + задържан JOGL + натиснат JOGR → стартира RunHomeEx(1)
+  - EVT_HOME флаг: ISR → main loop → RunHomeEx(fromButtons=1)
+  - 300ms дебаунсиран abort при неедновременно пускане на бутоните
+  - Abort проверка вградена в all polling loops (приближаване, утихване, backoff, паркиране)
+  - 1s grace период + 150ms бип + prompt след успешен хоминг
+  - Хоминг print-ове само при debug&1; ABORT винаги принтира
+  - CDC командата `home` непроменена
+- **Команда `range`**: измерва разстоянието между крайните изключватели
+  - Кара до ES_R, изчислява raw и usable (raw − homeoff) mm
+  - Записва rangeUsableMm, връща се на 0 (endstops изключени по време на връщане)
+- **Команда `moveto <mm>`**: абсолютно позициониране
+  - Изисква posHomed AND rangeUsableMm > 0
+  - При target < 0 или > range → 100ms бип + error
+  - delta = target − currentMm → Stepper_Move(delta)
+
+### Поправено / Подобрено
+- При спиране на мотора (wasBusy→idle): `\r\n\r\n` + prompt (двойна нова линия)
+- Blocking команди (home, range, combo): завършват с `\r\n\r\n` + prompt
+- Форматиране на промпта: `%7.2f` вместо `%8.2f` — изравнен с `XXXX.XX >`
 - Bounce повторно натискане на jog след пускане: `lastTick_jog` вече се нулира при пускане, потискайки bounce-натискания за `DEBOUNCE_REL_MS` (50ms) след пускане. Засягаше и кратко натискане (JOG_STEP), и дълго задържане (JOG_CONT).
 
 ### Променено

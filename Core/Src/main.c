@@ -97,6 +97,7 @@ volatile uint8_t diagMode = 0;
 volatile uint8_t buttonsEn = 0;   /* 0 = ignore button EXTI events — starts OFF, enabled after boot OK */
 volatile uint8_t endstopsEn = 1;  /* 0 = ignore endstop EXTI events */
 volatile int8_t  esBlocked  = 0;  /* -1 = ES_L hit (block CCW), +1 = ES_R hit (block CW), 0 = clear */
+float rangeUsableMm = 0.0f;       /* usable travel range in mm, set by 'range' command, 0 = not measured */
 volatile uint32_t buzzTick = 0;
 volatile uint8_t  buzzActive = 0;
 volatile uint8_t  buzzRequest = 0;  /* set in ISR, handled in main loop */
@@ -186,6 +187,7 @@ void ProcessEvents(void);
 void RunHome(void);
 void RunHomeEx(uint8_t fromButtons);
 void RunCombo(void);
+void RunRange(void);
 void PrintPrompt(void);
 void MorseStart(const char *text);
 void MorseUpdate(void);
@@ -803,6 +805,23 @@ void ProcessLine(void)
     {
         esBlocked = 0; Stepper_MoveSteps(ival);
     }
+    else if (sscanf((char *)lineBuf, "moveto %f", &fval) == 1)
+    {
+        if (!posHomed) {
+            printf("\r\nmoveto: not homed\r\n");
+        } else if (rangeUsableMm <= 0.0f) {
+            printf("\r\nmoveto: range not measured — run 'range' first\r\n");
+        } else if (fval < 0.0f || fval > rangeUsableMm) {
+            HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
+            HAL_Delay(100);
+            HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_SET);
+            printf("\r\nmoveto: %.2f out of range [0.00 .. %.2f]\r\n", fval, rangeUsableMm);
+        } else {
+            float currentMm = (float)posSteps / (float)motorParams.spmm.u;
+            esBlocked = 0;
+            Stepper_Move(fval - currentMm);
+        }
+    }
     else if (sscanf((char *)lineBuf, "%s", cmd) == 1)
     {
         if      (strcmp(cmd, "stop")   == 0) Stepper_Stop();
@@ -818,6 +837,7 @@ void ProcessLine(void)
         }
         else if (strcmp(cmd, "combo")  == 0) RunCombo();
         else if (strcmp(cmd, "home")   == 0) RunHome();
+        else if (strcmp(cmd, "range")  == 0) RunRange();
         else if (strncmp((char *)lineBuf, "morse ", 6) == 0) {
             static char morseBuf[64];
             strncpy(morseBuf, (char *)lineBuf + 6, sizeof(morseBuf) - 1);
@@ -871,6 +891,8 @@ void ProcessLine(void)
                       "  set jogmm    <f>   jog distance mm\r\n"
                       "  set stepmm   <f>   step distance mm\r\n"
                       "  set spmm     <n>   steps per mm\r\n"
+                      "  moveto <mm>        move to absolute position (needs home+range)\r\n"
+                      "  range              measure travel range, return to 0\r\n"
                       "  params, save, dump, stop, combo, cls, uptime, reset\r\n"
                       "  diag_inputs (di)   toggle button/endstop diag mode\r\n"
                       "  diag_outputs (do)  PULSE+DIR test loop (reset to stop)\r\n"
@@ -1069,7 +1091,8 @@ int main(void)
         static uint8_t wasBusy = 0;
         uint8_t busy = Stepper_IsBusy();
         if (wasBusy && !busy) {
-            if (motorParams.debug.u & 1) PrintPrompt();
+            printf("\r\n\r\n");
+            PrintPrompt();
         }
         wasBusy = busy;
     }
@@ -1632,11 +1655,49 @@ home_restore:
     buttonsEn = 1;
     esBlocked = 0;
     if (!homed && fromButtons) printf("home: ABORT\r\n");
-    printf("\r\n");
+    printf("\r\n\r\n");
     PrintPrompt();
 
 #undef HOME_RELEASE_MS
 #undef HOME_ABORT_CHECK
+}
+
+/* Measure travel range: drive to ES_R, print raw+usable mm, return to 0 */
+void RunRange(void)
+{
+    if (!posHomed) { printf("range: not homed\r\n"); PrintPrompt(); return; }
+
+    printf("range: driving to ES_R...\r\n");
+    esBlocked = 0;
+    Stepper_Move(9999.0f);
+    while (Stepper_IsBusy()) {
+        HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin);
+        HAL_Delay(50);
+    }
+
+    int32_t rawSteps = posSteps;
+    float rawMm      = (float)rawSteps / (float)motorParams.spmm.u;
+    float usableMm   = (float)(rawSteps - (int32_t)motorParams.homeoff.u) / (float)motorParams.spmm.u;
+    if (usableMm < 0.0f) usableMm = 0.0f;
+    rangeUsableMm = usableMm;
+
+    printf("range: %.2f mm raw, %.2f mm usable (homeoff=%lu steps)\r\n",
+           rawMm, usableMm, motorParams.homeoff.u);
+
+    /* Return to home position — endstops off to avoid ES_L interference near home */
+    HAL_Delay(300);
+    esBlocked = 0;
+    endstopsEn = 0;
+    Stepper_MoveSteps(-rawSteps);
+    while (Stepper_IsBusy()) {
+        HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin);
+        HAL_Delay(50);
+    }
+    endstopsEn = 1;
+    esBlocked = 0;
+
+    printf("\r\n\r\n");
+    PrintPrompt();
 }
 
 /* Combo test: 4 moves with wait between each */
@@ -1661,7 +1722,8 @@ void RunCombo(void)
     Stepper_Move(5.0f);
     while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); HAL_Delay(100); }
 
-    printf("combo done\r\n");
+    printf("\r\n\r\ncombo done\r\n\r\n");
+    PrintPrompt();
 }
 
 /* Called from main loop — safe to printf here */

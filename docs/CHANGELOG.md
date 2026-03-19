@@ -1,8 +1,27 @@
 # CHANGELOG — STM32F411CEU6 Stepper Controller
 
-## [Unreleased] — 2026-03-19
+## [Unreleased] — 2026-03-19 (v1.0 milestone)
 
-### Fixed
+### Added
+- **Button combo homing gesture**: at ES_L + hold JOGL + press JOGR → triggers RunHomeEx(1)
+  - EVT_HOME flag: ISR → main loop → RunHomeEx(fromButtons=1)
+  - 300ms debounced abort on non-simultaneous button release
+  - Abort check embedded in all polling loops (approach, settle, backoff, park)
+  - 1s grace period + 150ms beep + prompt after successful homing
+  - Homing print messages only when debug&1; ABORT always prints
+  - CDC `home` command unchanged
+- **`range` command**: measures travel distance between endstops
+  - Drives to ES_R, computes raw and usable (raw − homeoff) mm
+  - Stores `rangeUsableMm`, returns to home (endstops disabled during return)
+- **`moveto <mm>` command**: absolute positioning
+  - Requires posHomed AND rangeUsableMm > 0
+  - target < 0 or > range → 100ms beep + error message
+  - delta = target − currentMm → Stepper_Move(delta)
+
+### Fixed / Improved
+- On motor stop (wasBusy→idle): prints `\r\n\r\n` + prompt (double blank line before prompt)
+- Blocking commands (home, range, combo): end with `\r\n\r\n` + prompt
+- Prompt format changed to `%7.2f` from `%8.2f` — aligns with `XXXX.XX >`
 - Jog bounce re-press after release: `lastTick_jog` now reset on release,
   suppressing bounce-press events for `DEBOUNCE_REL_MS` (50ms) after release.
   Affected both short-press (JOG_STEP) and long-hold (JOG_CONT) modes.
