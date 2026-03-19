@@ -98,6 +98,7 @@ volatile uint8_t buttonsEn = 0;   /* 0 = ignore button EXTI events — starts OF
 volatile uint8_t endstopsEn = 1;  /* 0 = ignore endstop EXTI events */
 volatile int8_t  esBlocked  = 0;  /* -1 = ES_L hit (block CCW), +1 = ES_R hit (block CW), 0 = clear */
 float rangeUsableMm = 0.0f;       /* usable travel range in mm, set by 'range' command, 0 = not measured */
+static uint8_t cdcMoveActive = 0; /* set by CDC move commands, cleared on motor stop — suppresses jog/step prompt */
 volatile uint32_t buzzTick = 0;
 volatile uint8_t  buzzActive = 0;
 volatile uint8_t  buzzRequest = 0;  /* set in ISR, handled in main loop */
@@ -791,19 +792,19 @@ void ProcessLine(void)
     }
     else if (sscanf((char *)lineBuf, "move %f", &fval) == 1)
     {
-        esBlocked = 0; Stepper_Move(fval);
+        esBlocked = 0; cdcMoveActive = 1; Stepper_Move(fval);
     }
     else if (sscanf((char *)lineBuf, "movel %f", &fval) == 1)
     {
-        esBlocked = 0; Stepper_Move(-fval);
+        esBlocked = 0; cdcMoveActive = 1; Stepper_Move(-fval);
     }
     else if (sscanf((char *)lineBuf, "mover %f", &fval) == 1)
     {
-        esBlocked = 0; Stepper_Move(fval);
+        esBlocked = 0; cdcMoveActive = 1; Stepper_Move(fval);
     }
     else if (sscanf((char *)lineBuf, "steps %d", &ival) == 1)
     {
-        esBlocked = 0; Stepper_MoveSteps(ival);
+        esBlocked = 0; cdcMoveActive = 1; Stepper_MoveSteps(ival);
     }
     else if (sscanf((char *)lineBuf, "moveto %f", &fval) == 1)
     {
@@ -818,7 +819,7 @@ void ProcessLine(void)
             printf("\r\nmoveto: %.2f out of range [0.00 .. %.2f]\r\n", fval, rangeUsableMm);
         } else {
             float currentMm = (float)posSteps / (float)motorParams.spmm.u;
-            esBlocked = 0;
+            esBlocked = 0; cdcMoveActive = 1;
             Stepper_Move(fval - currentMm);
         }
     }
@@ -1091,8 +1092,13 @@ int main(void)
         static uint8_t wasBusy = 0;
         uint8_t busy = Stepper_IsBusy();
         if (wasBusy && !busy) {
-            printf("\r\n\r\n");
-            PrintPrompt();
+            if (cdcMoveActive) {
+                printf("\r\n\r\n");
+                PrintPrompt();
+                cdcMoveActive = 0;
+            } else if (motorParams.debug.u & 1) {
+                PrintPrompt();
+            }
         }
         wasBusy = busy;
     }
@@ -1443,9 +1449,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     snapA = GPIOA->IDR;
     snapB = GPIOB->IDR;
 
-    /* Request beep — handled in main loop (avoids race with MorseUpdate) */
-    buzzRequest = 1;
-
     switch (GPIO_Pin)
     {
     /* ---- Endstops: edge lockout, instant stop ---- */
@@ -1455,6 +1458,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
             if (now - lastTick_esL >= DEBOUNCE_MS) {
                 lastTick_esL = now;
                 Stepper_Stop();
+                buzzRequest = 1;  /* beep on endstop hit */
                 evtFlags |= EVT_ES_L;
             }
         } else if (now - lastTick_esL >= DEBOUNCE_MS) {
@@ -1469,6 +1473,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
             if (now - lastTick_esR >= DEBOUNCE_MS) {
                 lastTick_esR = now;
                 Stepper_Stop();
+                buzzRequest = 1;  /* beep on endstop hit */
                 evtFlags |= EVT_ES_R;
             }
         } else if (now - lastTick_esR >= DEBOUNCE_MS) {
@@ -1481,8 +1486,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     case BUTT_JOGL_Pin:
         if (!buttonsEn) break;
         if (snapA & BUTT_JOGL_Pin) {
-            /* release — unconditional decel (safe: same prio as TIM2, atomic) */
-            Stepper_Stop();
+            /* release — stop only if continuous jog; let fixed Jog() complete */
+            if (jogStateL == JOG_CONT) Stepper_Stop();
             lastTick_jogL = now;
             evtFlags |= EVT_JOGL_UP;
         } else if (now - lastTick_jogL >= DEBOUNCE_REL_MS) {
@@ -1496,8 +1501,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     case BUTT_JOGR_Pin:
         if (!buttonsEn) break;
         if (snapA & BUTT_JOGR_Pin) {
-            /* release — unconditional decel (safe: same prio as TIM2, atomic) */
-            Stepper_Stop();
+            /* release — stop only if continuous jog; let fixed Jog() complete */
+            if (jogStateR == JOG_CONT) Stepper_Stop();
             lastTick_jogR = now;
             evtFlags |= EVT_JOGR_UP;
         } else if (now - lastTick_jogR >= DEBOUNCE_REL_MS) {
