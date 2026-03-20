@@ -1469,8 +1469,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /* Returns 1 if both JOGL and JOGR are still held (for combo abort check).
    homeFromButtons=0 means CDC command — no abort check needed. */
 static int HomeButtonsHeld(void) {
-    return (HAL_GPIO_ReadPin(BUTT_JOGL_GPIO_Port, BUTT_JOGL_Pin) == GPIO_PIN_RESET) &&
-           (HAL_GPIO_ReadPin(BUTT_JOGR_GPIO_Port, BUTT_JOGR_Pin) == GPIO_PIN_RESET);
+    return !(snapA & BUTT_JOGL_Pin) && !(snapA & BUTT_JOGR_Pin);
 }
 
 void RunHome(void)
