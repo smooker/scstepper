@@ -727,24 +727,24 @@ void ProcessLine(void)
     }
     else if (sscanf((char *)lineBuf, "move %f", &fval) == 1)
     {
-        if      (ES_L_ACTIVE() && fval < 0) printf("blocked: ES_L\r\n");
-        else if (ES_R_ACTIVE() && fval > 0) printf("blocked: ES_R\r\n");
+        if      (!(snapA & ES_L_Pin) && fval < 0) printf("blocked: ES_L\r\n");
+        else if (!(snapA & ES_R_Pin) && fval > 0) printf("blocked: ES_R\r\n");
         else { cdcMoveActive = 1; Stepper_Move(fval); }
     }
     else if (sscanf((char *)lineBuf, "movel %f", &fval) == 1)
     {
-        if (ES_L_ACTIVE()) printf("blocked: ES_L\r\n");
+        if (!(snapA & ES_L_Pin)) printf("blocked: ES_L\r\n");
         else { cdcMoveActive = 1; Stepper_Move(-fval); }
     }
     else if (sscanf((char *)lineBuf, "mover %f", &fval) == 1)
     {
-        if (ES_R_ACTIVE()) printf("blocked: ES_R\r\n");
+        if (!(snapA & ES_R_Pin)) printf("blocked: ES_R\r\n");
         else { cdcMoveActive = 1; Stepper_Move(fval); }
     }
     else if (sscanf((char *)lineBuf, "steps %d", &ival) == 1)
     {
-        if      (ES_L_ACTIVE() && ival < 0) printf("blocked: ES_L\r\n");
-        else if (ES_R_ACTIVE() && ival > 0) printf("blocked: ES_R\r\n");
+        if      (!(snapA & ES_L_Pin) && ival < 0) printf("blocked: ES_L\r\n");
+        else if (!(snapA & ES_R_Pin) && ival > 0) printf("blocked: ES_R\r\n");
         else { cdcMoveActive = 1; Stepper_MoveSteps(ival); }
     }
     else if (sscanf((char *)lineBuf, "moveto %f", &fval) == 1)
@@ -1710,12 +1710,12 @@ void ProcessEvents(void)
     if (!diagMode) {
         if (jogStateL == JOG_PRESSED && !Stepper_IsBusy()
             && (now - jogPressTickL >= JOG_HOLD_MS)) {
-            if (!(GPIOA->IDR & ES_L_Pin)) { jogStateL = JOG_IDLE; }
+            if (!(snapA & ES_L_Pin)) { jogStateL = JOG_IDLE; }
             else { jogStateL = JOG_CONT; Stepper_RunContinuous(-1); }
         }
         if (jogStateR == JOG_PRESSED && !Stepper_IsBusy()
             && (now - jogPressTickR >= JOG_HOLD_MS)) {
-            if (!(GPIOA->IDR & ES_R_Pin)) { jogStateR = JOG_IDLE; }
+            if (!(snapA & ES_R_Pin)) { jogStateR = JOG_IDLE; }
             else { jogStateR = JOG_CONT; Stepper_RunContinuous(1); }
         }
     }
@@ -1723,12 +1723,12 @@ void ProcessEvents(void)
     /* ---- Step buttons (HW pin check — don't move into active endstop!) ---- */
     if (flags & EVT_STEPL) {
         if (diagMode) { printf("BUTT_STEPL\r\n"); PrintPrompt(); }
-        else if (!(GPIOA->IDR & ES_L_Pin)) { /* ES_L active LOW = blocked */ }
+        else if (!(snapA & ES_L_Pin)) { /* ES_L active = blocked */ }
         else { Stepper_Move(-motorParams.stepmm.f); }
     }
     if (flags & EVT_STEPR) {
         if (diagMode) { printf("BUTT_STEPR\r\n"); PrintPrompt(); }
-        else if (!(GPIOA->IDR & ES_R_Pin)) { /* ES_R active LOW = blocked */ }
+        else if (!(snapA & ES_R_Pin)) { /* ES_R active = blocked */ }
         else { Stepper_Move(motorParams.stepmm.f); }
     }
 
