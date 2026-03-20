@@ -6,9 +6,14 @@ source ./initcfg/project.gdb
 
 define ld
 file ./build/scstepper.elf
-load ./build/scstepper.hex
 set remote exec-file ./build/scstepper.elf
-compare-sections
+end
+
+define fl
+file ./build/scstepper.elf
+set remote exec-file ./build/scstepper.elf
+load ./build/scstepper.hex
+fwcheck
 end
 
 define ag
@@ -19,5 +24,6 @@ target extended-remote /dev/ttyBmpGdb
 monitor swdp_scan
 attach 1
 monitor traceswo
+ld
 fwcheck
 end
