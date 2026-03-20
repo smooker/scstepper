@@ -616,71 +616,12 @@ uint8_t morse(const char *format, ... )
 }
 
 //
-void My_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd)
-{
-    UNUSED(hpcd);
-    BKPT;
-}
-
-// USB Physical connection
-void My_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd)
-{
-    UNUSED(hpcd);
-}
-
-// USB Physical disconnection
+// USB Physical disconnection — safety net: clear CDC_IsConnected if host
+// disconnects without sending SET_CONTROL_LINE_STATE first.
 void My_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd)
 {
-    UNUSED(hpcd);
     CDC_IsConnected = 0;
-}
-
-// Many nops
-void delay() {
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-}
-
-// Start Of Frame Handling.
-void My_PCD_SOF(PCD_HandleTypeDef *hpcd)
-{
-    UNUSED(hpcd);
-    //fixme. find out why there are two sof needles
-    // HAL_GPIO_WritePin(LED_USER_GPIO_Port, LED_USER_Pin, GPIO_PIN_RESET);
-    // delay();
-    // HAL_GPIO_WritePin(LED_USER_GPIO_Port, LED_USER_Pin, GPIO_PIN_SET);
+    USBD_LL_DevDisconnected((USBD_HandleTypeDef *)hpcd->pData);
 }
 
 //
@@ -734,13 +675,6 @@ uint8_t CDC_TxWrite(const uint8_t *data, uint16_t len)
     txLen += len;
     TxStart();
     return 1;
-}
-
-// DataOut is from HOST to DEVICE
-static void MyPCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum)
-{
-    USBD_LL_DataOutStage((USBD_HandleTypeDef *)hpcd->pData, epnum,
-                         hpcd->OUT_ep[epnum].xfer_buff);
 }
 
 // DataIn is from DEVICE to HOST
@@ -946,37 +880,6 @@ void ProcessLineOld(void)
   * @brief  The application entry point.
   * @retval int
   */
-/*
- * FixNVIC_Priorities() — override CubeMX NVIC defaults.
- *
- * Problem: CubeMX sets USB at prio 0 (highest), stepper TIM2 at prio 1,
- * and jog buttons at prio 2. This causes:
- *   - Stepper_Stop() called from jog release (prio 2) can be preempted
- *     by TIM2 (prio 1), creating race condition on shared state variables
- *   - USB higher than stepper means USB traffic can delay pulse timing
- *
- * Fix: movement/stop all at prio 0, buttons at prio 2, USB at prio 3.
- * Same-priority ISRs cannot preempt each other on Cortex-M4, so
- * Stepper_Stop() is atomic when called from endstop/jog ISRs.
- *
- * When doing final CubeMX regen, transfer these priorities to .ioc
- * and remove this function.
- */
-static void FixNVIC_Priorities(void)
-{
-    /* prio 0: movement + safety (cannot preempt each other = atomic) */
-    HAL_NVIC_SetPriority(TIM2_IRQn,          0, 0);  /* stepper pulse */
-    HAL_NVIC_SetPriority(EXTI3_IRQn,         0, 0);  /* ES_L endstop  */
-    HAL_NVIC_SetPriority(EXTI4_IRQn,         0, 0);  /* ES_R endstop  */
-    HAL_NVIC_SetPriority(EXTI9_5_IRQn,       0, 0);  /* jog buttons   */
-
-    /* prio 2: step buttons (fire-and-forget, no Stepper_Stop) */
-    HAL_NVIC_SetPriority(EXTI0_IRQn,         2, 0);  /* STEPL */
-    HAL_NVIC_SetPriority(EXTI1_IRQn,         2, 0);  /* STEPR */
-
-    /* prio 3: USB CDC (device works standalone without PC) */
-    HAL_NVIC_SetPriority(OTG_FS_IRQn,        3, 0);
-}
 
 int main(void)
 {
@@ -1009,19 +912,15 @@ int main(void)
   MX_USB_DEVICE_Init();
   MX_TIM2_Init();
 
-  FixNVIC_Priorities();  /* override CubeMX defaults — see comment above */
 
   /* USER CODE BEGIN 2 */
 
   setvbuf(stdout, NULL, _IONBF, 0);  /* disable buffering entirely */
 
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_CONNECT_CB_ID,  My_PCD_ConnectCallback);
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_DISCONNECT_CB_ID,  My_PCD_DisconnectCallback);
-  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_SOF_CB_ID,  My_PCD_SOF);
-
-  // FROM HOST TO DEVICE
-  HAL_PCD_RegisterDataOutStageCallback(&hpcd_USB_OTG_FS, MyPCD_DataOutStageCallback);
-  // FROM DEVICE TO HOST
+  /* Override disconnect only: clear CDC_IsConnected as safety net
+   * (host may disconnect without SET_CONTROL_LINE_STATE).
+   * All other PCD callbacks use usbd_conf.c defaults. */
+  HAL_PCD_RegisterCallback(&hpcd_USB_OTG_FS, HAL_PCD_DISCONNECT_CB_ID, My_PCD_DisconnectCallback);
   HAL_PCD_RegisterDataInStageCallback(&hpcd_USB_OTG_FS, MyPCD_DataInStageCallback);
 
   /* USER CODE END 2 */
@@ -1764,6 +1663,7 @@ void ProcessEvents(void)
     }
     if (flags & EVT_JOGL_UP) {
         if (diagMode) { printf("JOGL_UP\r\n"); PrintPrompt(); }
+        if (jogStateL == JOG_CONT) Stepper_Stop();  /* safety net: ISR may have missed the race */
         jogStateL = JOG_IDLE;
     }
 
@@ -1779,6 +1679,7 @@ void ProcessEvents(void)
     }
     if (flags & EVT_JOGR_UP) {
         if (diagMode) { printf("JOGR_UP\r\n"); PrintPrompt(); }
+        if (jogStateR == JOG_CONT) Stepper_Stop();  /* safety net: ISR may have missed the race */
         jogStateR = JOG_IDLE;
     }
 
