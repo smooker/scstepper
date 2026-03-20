@@ -727,19 +727,25 @@ void ProcessLine(void)
     }
     else if (sscanf((char *)lineBuf, "move %f", &fval) == 1)
     {
-        esBlocked = 0; cdcMoveActive = 1; Stepper_Move(fval);
+        if      (esBlocked == -1 && fval < 0) printf("blocked: ES_L\r\n");
+        else if (esBlocked ==  1 && fval > 0) printf("blocked: ES_R\r\n");
+        else { esBlocked = 0; cdcMoveActive = 1; Stepper_Move(fval); }
     }
     else if (sscanf((char *)lineBuf, "movel %f", &fval) == 1)
     {
-        esBlocked = 0; cdcMoveActive = 1; Stepper_Move(-fval);
+        if (esBlocked == -1) printf("blocked: ES_L\r\n");
+        else { esBlocked = 0; cdcMoveActive = 1; Stepper_Move(-fval); }
     }
     else if (sscanf((char *)lineBuf, "mover %f", &fval) == 1)
     {
-        esBlocked = 0; cdcMoveActive = 1; Stepper_Move(fval);
+        if (esBlocked == 1) printf("blocked: ES_R\r\n");
+        else { esBlocked = 0; cdcMoveActive = 1; Stepper_Move(fval); }
     }
     else if (sscanf((char *)lineBuf, "steps %d", &ival) == 1)
     {
-        esBlocked = 0; cdcMoveActive = 1; Stepper_MoveSteps(ival);
+        if      (esBlocked == -1 && ival < 0) printf("blocked: ES_L\r\n");
+        else if (esBlocked ==  1 && ival > 0) printf("blocked: ES_R\r\n");
+        else { esBlocked = 0; cdcMoveActive = 1; Stepper_MoveSteps(ival); }
     }
     else if (sscanf((char *)lineBuf, "moveto %f", &fval) == 1)
     {

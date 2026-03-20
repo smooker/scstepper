@@ -91,10 +91,11 @@ comparisons with `decelSteps`, float cast). `0xFFFFFFFF` as int32 = -1 → stops
 immediately. Motor is bounded by physical endstops. Stopped by EXTI on button
 release or endstop hit.
 
-### 13. CLI move commands clear esBlocked (main.c:788-802)
+### 13. CLI move commands clear esBlocked — **FIXED**
 
-`move`, `movel`, `mover`, `steps` all set `esBlocked = 0`, allowing motion back
-into an already-triggered endstop. Deliberate but risky.
+`move`/`movel`/`mover`/`steps` now check direction vs `esBlocked` before moving:
+- Direction away from blocked endstop → allowed, clears `esBlocked`
+- Direction toward blocked endstop → refused with `"blocked: ES_L/R"`
 
 ## Good Practices
 
