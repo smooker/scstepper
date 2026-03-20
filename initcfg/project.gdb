@@ -1,91 +1,10 @@
 # initcfg/project.gdb — scstepper project GDB config
 # Sourced by scripts/script2.gdb after the dashboard loads.
+#
+# Dashboard panel 'scstepper' is in initcfg/scstepper_panel.py
+# Install: make userinstall  (copies to ~/.gdbinit.d/)
 
-# ─── Dashboard panel: live stepper state ─────────────────────────────────────
-python
-
-class StepperPanel(Dashboard.Source):
-    """Live scstepper firmware state panel."""
-
-    def label(self):
-        return 'scstepper'
-
-    def lines(self, term_width, term_height, style_changed):
-        def v(expr, default='?'):
-            try:    return str(gdb.parse_and_eval(expr))
-            except: return default
-        def vi(expr, default=-1):
-            try:    return int(gdb.parse_and_eval(expr))
-            except: return default
-        def vf(expr, default=0.0):
-            try:    return float(gdb.parse_and_eval(expr))
-            except: return default
-
-        rows = []
-
-        # ── Motor ──────────────────────────────────────────────────────────
-        state = v('stepperState')
-        pos   = vi('posSteps')
-        homed = vi('posHomed')
-        esblk = vi('esBlocked')
-        rng   = vf('rangeUsableMm')
-        rows.append(
-            'motor │ {:30s} pos={:7d} steps │ homed={} esBlk={:+d} range={:.2f}mm'
-            .format(state, pos, homed, esblk, rng))
-
-        # ── Inputs ─────────────────────────────────────────────────────────
-        btns = vi('buttonsEn')
-        ends = vi('endstopsEn')
-        diag = vi('diagMode')
-        buzz = vi('buzzActive')
-        sem  = vi('semaphore', 0)
-        rows.append(
-            'inputs│ btns={} ends={} diag={} buzz={} │ sem={:#010x}'
-            .format(btns, ends, diag, buzz, sem))
-
-        # ── Events / jog (static vars — available when stopped in main.c) ─
-        evtf = vi("'main.c'::evtFlags", -1)
-        jogL = v("'main.c'::jogStateL", '?')
-        jogR = v("'main.c'::jogStateR", '?')
-        if evtf >= 0:
-            rows.append(
-                'events│ evtFlags={:#010x} │ jogL={} jogR={}'
-                .format(evtf, jogL, jogR))
-        else:
-            rows.append('events│ (static — stop inside main.c to read)')
-
-        # ── CDC ring buffer ─────────────────────────────────────────────────
-        rxh = vi("'main.c'::rxHead", -1)
-        rxt = vi("'main.c'::rxTail", -1)
-        txb = vi("'main.c'::txBusy", -1)
-        if rxh >= 0:
-            pending = (rxh - rxt + 512) % 512
-            rows.append(
-                'cdc   │ rx head={} tail={} pending={} B │ txBusy={}'
-                .format(rxh, rxt, pending, txb))
-        else:
-            rows.append('cdc   │ (static — stop inside main.c to read)')
-
-        # ── Motor params ────────────────────────────────────────────────────
-        try:
-            mp = gdb.parse_and_eval('motorParams')
-            rows.append(
-                'params│ max={:.1f} min={:.1f} acc={:.1f} dec={:.1f} spmm={} jog={:.2f}mm step={:.2f}mm'
-                .format(float(mp['mmpsmax']['f']),
-                        float(mp['mmpsmin']['f']),
-                        float(mp['dvdtacc']['f']),
-                        float(mp['dvdtdecc']['f']),
-                        int(mp['spmm']['u']),
-                        float(mp['jogmm']['f']),
-                        float(mp['stepmm']['f'])))
-        except:
-            rows.append('params│ ?')
-
-        return rows
-
-end
-
-# ─── st: quick state dump (mirrors dashboard panel as plain text) ─────────────
+# ─── st: quick state dump ────────────────────────────────────────────────────
 define st
   printf "stepperState  : %s\n",   stepperState
   printf "posSteps      : %d\n",   posSteps
