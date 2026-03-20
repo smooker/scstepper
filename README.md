@@ -13,6 +13,28 @@ make clean && make
 
 Toolchain: `arm-none-eabi-gcc 14.x`
 
+## Developer Setup (first clone)
+
+```bash
+make userinstall   # ~/.gdbinit + ~/.gdbinit.d/scstepper_panel.py + make qtc
+make sysinstall    # udev rules (run as root)
+```
+
+After CubeMX regeneration:
+
+```bash
+make post_cubemx   # restore Makefile + fix GPIO mode + make check
+```
+
+### Shared work directory (multi-user chroot setup)
+
+If the project lives inside a chroot shared between users, run once as root on the host to ensure all new files are group-writable:
+
+```bash
+chmod -R g+s,g+w,g+r /path/to/work
+setfacl -R -d -m g::rwx /path/to/work
+```
+
 ## Flash & Debug
 
 Via **Black Magic Probe** on `/dev/ttyBmpGdb`:
