@@ -20,6 +20,8 @@
 #define EE_ADDR_HOMESPD     9
 #define EE_ADDR_HOMEOFF     10
 #define EE_ADDR_DEBUG       11
+#define EE_ADDR_MAGIC       12   /* written by SaveParams; absent = EEPROM never initialized */
+#define EEPROM_MAGIC_VALUE  0x5AFEC0DEUL
 
 #define DEFAULT_HOMESPD     1.0f    /* mm/s     */
 #define DEFAULT_HOMEOFF     400UL   /* steps    */
@@ -90,6 +92,8 @@ void     Stepper_DumpParams(void);
 void     Stepper_SaveParams(void);
 void     Stepper_LoadParams(void);
 void     Stepper_SetParam(const char *name, float value);
-void     Stepper_ValidateParams(void);
+int      Stepper_ValidateParams(void);  /* returns 1=ok, 0=warnings (save blocked) */
+int      Stepper_LoadParams(void);      /* returns 1=EEPROM blank, 0=initialized   */
+void     Stepper_InitDefaults(void);    /* write defaults to EEPROM (initeeprom)    */
 
 #endif /* STEPPER_H */

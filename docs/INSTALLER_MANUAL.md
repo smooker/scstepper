@@ -121,9 +121,54 @@ Run `combo` to test all 4 ramp profiles:
 | 9 | homespd | float | 1.0 | mm/s |
 | 10 | homeoff | uint32 | 400 | steps |
 | 11 | debug | uint32 | 0 | bitfield (bit0: verbose button msgs) |
+| 12 | *(magic)* | uint32 | 0x5AFEC0DE | written by `save`/`initeeprom`; absent = EEPROM blank |
 
 All stored as raw `uint32_t` (floats via union bit-cast). Dual-page wear-leveling
 in flash sectors 6 & 7 (128 KB each).
+
+## Hidden / Admin Commands
+
+These commands are **not listed in `help`** and not documented in the User Manual.
+For factory/installer use only.
+
+### `initeeprom`
+
+Resets all parameters to firmware defaults and saves them to EEPROM.
+Writes the magic key — subsequent boots will load from EEPROM instead of prompting.
+
+```
+initeeprom
+→ params saved
+→ EEPROM initialized with defaults
+```
+
+**Use when:**
+- First flash of new hardware
+- Recovering from corrupted EEPROM
+- Resetting to known-good state before tuning
+
+### Boot-time EEPROM blank detection
+
+If the magic key is absent (fresh flash, erased sectors), the firmware prompts
+on the CDC serial port with a 3-second timeout:
+
+```
+*** EEPROM blank — init with defaults? [y/N] (3s) ***
+```
+
+- Type `y` → defaults written to EEPROM (`initeeprom` equivalent)
+- Type anything else or no response → defaults used in RAM only, EEPROM stays blank
+
+### `save` — validation guard
+
+`save` runs full cross-parameter validation before writing. If any warning is
+active (e.g. `mmpsmin >= mmpsmax`, ramp overflow), save is **blocked**:
+
+```
+save
+→ WARN: mmpsmin (60.00) >= mmpsmax (50.00) — ramp broken!
+→ save blocked — fix warnings first
+```
 
 ## Wiring
 

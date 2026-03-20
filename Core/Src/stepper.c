@@ -90,11 +90,12 @@ static int32_t MmToSteps(float mm)
 
 /* ---- EEPROM ------------------------------------------------------- */
 
-void Stepper_LoadParams(void)
+/* Returns 1 if EEPROM was blank (magic absent), 0 if already initialized.
+   In both cases params are loaded (defaults used for missing keys). */
+int Stepper_LoadParams(void)
 {
     uint32_t val;
 
-    /* floats stored as raw uint32_t via union — read directly         */
     if (EEPROM_Read(EE_ADDR_MMPSMAX,  &val) == EEPROM_OK) motorParams.mmpsmax.u  = val;
     else motorParams.mmpsmax.f  = DEFAULT_MMPSMAX;
 
@@ -125,12 +126,21 @@ void Stepper_LoadParams(void)
     if (EEPROM_Read(EE_ADDR_HOMEOFF,  &val) == EEPROM_OK) motorParams.homeoff.u  = val;
     else motorParams.homeoff.u  = DEFAULT_HOMEOFF;
 
-    if (EEPROM_Read(EE_ADDR_DEBUG,   &val) == EEPROM_OK) motorParams.debug.u   = val;
-    else motorParams.debug.u   = DEFAULT_DEBUG;
+    if (EEPROM_Read(EE_ADDR_DEBUG,    &val) == EEPROM_OK) motorParams.debug.u    = val;
+    else motorParams.debug.u    = DEFAULT_DEBUG;
+
+    /* blank EEPROM = magic key absent */
+    int blank = (EEPROM_Read(EE_ADDR_MAGIC, &val) != EEPROM_OK ||
+                 val != EEPROM_MAGIC_VALUE);
+    return blank;
 }
 
 void Stepper_SaveParams(void)
 {
+    if (!Stepper_ValidateParams()) {
+        printf("save blocked — fix warnings first\r\n");
+        return;
+    }
     EEPROM_Write(EE_ADDR_MMPSMAX,  motorParams.mmpsmax.u);
     EEPROM_Write(EE_ADDR_MMPSMIN,  motorParams.mmpsmin.u);
     EEPROM_Write(EE_ADDR_DVDTACC,  motorParams.dvdtacc.u);
@@ -142,7 +152,25 @@ void Stepper_SaveParams(void)
     EEPROM_Write(EE_ADDR_HOMESPD,  motorParams.homespd.u);
     EEPROM_Write(EE_ADDR_HOMEOFF,  motorParams.homeoff.u);
     EEPROM_Write(EE_ADDR_DEBUG,    motorParams.debug.u);
+    EEPROM_Write(EE_ADDR_MAGIC,    EEPROM_MAGIC_VALUE);
     printf("params saved\r\n");
+}
+
+void Stepper_InitDefaults(void)
+{
+    motorParams.mmpsmax.f  = DEFAULT_MMPSMAX;
+    motorParams.mmpsmin.f  = DEFAULT_MMPSMIN;
+    motorParams.dvdtacc.f  = DEFAULT_DVDTACC;
+    motorParams.dvdtdecc.f = DEFAULT_DVDTDECC;
+    motorParams.jogmm.f    = DEFAULT_JOGMM;
+    motorParams.stepmm.f   = DEFAULT_STEPMM;
+    motorParams.spmm.u     = DEFAULT_SPMM;
+    motorParams.dirinv.u   = 0;
+    motorParams.homespd.f  = DEFAULT_HOMESPD;
+    motorParams.homeoff.u  = DEFAULT_HOMEOFF;
+    motorParams.debug.u    = DEFAULT_DEBUG;
+    Stepper_SaveParams();
+    printf("EEPROM initialized with defaults\r\n");
 }
 
 void Stepper_DumpParams(void)
@@ -189,8 +217,9 @@ static int check_u(const char *name, uint32_t v, uint32_t mn, uint32_t mx)
     return 1;
 }
 
-/* Cross-parameter consistency check — called after every successful set and at boot */
-void Stepper_ValidateParams(void)
+/* Cross-parameter consistency check — called after every successful set and at boot.
+   Returns 1 if all checks pass, 0 if any warning (save is blocked). */
+int Stepper_ValidateParams(void)
 {
     int ok = 1;
 
@@ -246,6 +275,7 @@ void Stepper_ValidateParams(void)
     }
 
     if (ok) printf("params ok\r\n");
+    return ok;
 }
 
 void Stepper_SetParam(const char *name, float value)

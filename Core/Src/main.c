@@ -762,7 +762,8 @@ void ProcessLine(void)
     {
         if      (strcmp(cmd, "stop")   == 0) Stepper_Stop();
         else if (strcmp(cmd, "params") == 0) Stepper_DumpParams();
-        else if (strcmp(cmd, "save")   == 0) Stepper_SaveParams();
+        else if (strcmp(cmd, "save")       == 0) Stepper_SaveParams();
+        else if (strcmp(cmd, "initeeprom") == 0) Stepper_InitDefaults();
         else if (strcmp(cmd, "dump")   == 0) dumpVars();
         else if (strcmp(cmd, "cls")    == 0) { printf("\033[2J\033[H"); PrintPrompt(); }
         else if (strcmp(cmd, "uptime") == 0) printf("uptime: %lu ms\r\n", HAL_GetTick());
@@ -942,7 +943,7 @@ int main(void)
   lineLen = 0;
   lineBuf[0] = '\0';
 
-  Stepper_LoadParams();
+  int eeprom_blank = Stepper_LoadParams();
   Stepper_ValidateParams();
   Stepper_Init(&htim2);
 
@@ -956,6 +957,24 @@ int main(void)
   printf("===============================================\r\n");
 
   Stepper_DumpParams();
+
+  if (eeprom_blank) {
+      printf("\r\n*** EEPROM blank — init with defaults? [y/N] (3s) ***\r\n");
+      uint32_t t0 = HAL_GetTick();
+      char ans = 0;
+      while (HAL_GetTick() - t0 < 3000) {
+          if (rxHead != rxTail) {
+              ans = (char)UserRxBufferFS[rxTail];
+              rxTail = (rxTail + 1) % CDC_RX_BUF_SIZE;
+              break;
+          }
+      }
+      if (ans == 'y' || ans == 'Y') {
+          Stepper_InitDefaults();
+      } else {
+          printf("skipped — defaults in RAM only, not saved\r\n");
+      }
+  }
 
   morse("G");
 
