@@ -23,8 +23,8 @@
 #define EE_ADDR_MAGIC       12   /* written by SaveParams; absent = EEPROM never initialized */
 #define EEPROM_MAGIC_VALUE  0x5AFEC0DEUL
 
-#define DEFAULT_HOMESPD     1.0f    /* mm/s     */
-#define DEFAULT_HOMEOFF     400UL   /* steps    */
+#define DEFAULT_HOMESPD     0.5f    /* mm/s     */
+#define DEFAULT_HOMEOFF     10UL    /* steps    */
 #define DEFAULT_DEBUG       0UL     /* bit0: verbose button msgs */
 
 /* ---- Timer clock --------------------------------------------------- */
@@ -34,13 +34,13 @@
 #define ABS(x)  ((x) < 0 ? -(x) : (x))
 
 /* ---- Default params ------------------------------------------------ */
-#define DEFAULT_MMPSMAX     50.0f   /* mm/s     */
-#define DEFAULT_MMPSMIN     1.0f    /* mm/s     */
-#define DEFAULT_DVDTACC     100.0f  /* mm/s²    */
-#define DEFAULT_DVDTDECC    80.0f   /* mm/s²    */
-#define DEFAULT_JOGMM       1.0f    /* mm       */
+#define DEFAULT_MMPSMAX     1.0f    /* mm/s     */
+#define DEFAULT_MMPSMIN     0.5f    /* mm/s     */
+#define DEFAULT_DVDTACC     50.0f   /* mm/s²    */
+#define DEFAULT_DVDTDECC    100.0f  /* mm/s²    */
+#define DEFAULT_JOGMM       0.2f    /* mm       */
 #define DEFAULT_STEPMM      1.0f    /* mm       */
-#define DEFAULT_SPMM        80UL    /* steps/mm */
+#define DEFAULT_SPMM        400UL   /* steps/mm */
 
 /* ---- Parameter limits (validated in Stepper_SetParam) -------------- */
 /*                          min         max                             */
