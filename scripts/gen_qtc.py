@@ -5,6 +5,7 @@ Run via: make qtc  (from project root)
 
 Outputs:
   compile_commands.json   — clangd compile database (project root, gitignored)
+  .clangd                 — clangd flag fixups for ARM bare-metal (project root, gitignored)
   qtc/scstepper.creator   — Qt Creator generic project marker
   qtc/scstepper.files     — all .c/.h/.s source files
   qtc/scstepper.includes  — include paths
@@ -156,6 +157,7 @@ def main():
         sys.exit(1)
 
     write_compile_commands(commands)
+    write_clangd()
 
     files    = collect_files()
     includes = collect_includes(commands)

@@ -225,6 +225,36 @@ clean:
 	-rm -fR $(BUILD_DIR)
 
 #######################################
+# Developer environment install
+# Run once after clone (or after initcfg changes)
+#######################################
+.PHONY: install
+install:
+	@echo ""
+	@echo "=== Installing developer environment ==="
+	@echo ""
+	@echo "--- [1/4] ~/.gdbinit (auto-load local .gdbinit) ---"
+	@cp -v initcfg/dot-gdbinit-for-home ~/.gdbinit
+	@echo ""
+	@echo "--- [2/4] .gdbinit (GDB Dashboard, local project) ---"
+	@cp -v initcfg/gdbinit .gdbinit
+	@echo ""
+	@echo "--- [3/4] udev rules ---"
+	@cp -v scripts/99-steppersys.rules /etc/udev/rules.d/99-steppersys.rules
+	@udevadm control --reload-rules
+	@echo "udev rules reloaded"
+	@echo ""
+	@echo "--- [4/4] Qt Creator + clangd files (make qtc) ---"
+	@$(MAKE) --no-print-directory qtc
+	@echo ""
+	@echo "======== INSTALL OK ========"
+	@echo ""
+	@echo "  Open qtc/scstepper.creator in Qt Creator"
+	@echo "  clangd uses compile_commands.json automatically"
+	@echo "  GDB Dashboard loaded from .gdbinit on every gdb start"
+	@echo ""
+
+#######################################
 # Qt Creator / clangd project files
 #######################################
 .PHONY: qtc

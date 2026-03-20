@@ -7,3 +7,6 @@ build/
 __pycache__/
 .gdb_history
 compile_commands.json
+.clangd
+.gdbinit
+qtc/
