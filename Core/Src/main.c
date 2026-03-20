@@ -812,7 +812,7 @@ int main(void)
       while (p < end) { CRC->DR = *p++; }
       uint32_t computed = CRC->DR;
       if (computed == __fw_info.crc) {
-          morse(".");          /* single beep = OK */
+          morse("E");          /* E = dit = single short beep = CRC OK */
       } else {
           while (1) { morse("SOS"); HAL_Delay(2000); }   /* halt */
       }
