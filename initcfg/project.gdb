@@ -4,6 +4,45 @@
 # Dashboard panel 'scstepper' is in initcfg/scstepper_panel.py
 # Install: make userinstall  (copies to ~/.gdbinit.d/)
 
+# ─── inject: write command string into CDC RX ring buffer ────────────────────
+# Usage:  inject params
+#         inject set mmpsmax 80
+# Firmware processes the command on next main-loop iteration (after 'continue').
+python
+
+class InjectCmd(gdb.Command):
+    """Inject a CDC command into the firmware RX ring buffer.
+
+Usage: inject COMMAND
+Writes COMMAND + CR into UserRxBufferFS and advances rxHead.
+Firmware processes it on the next main-loop iteration after 'continue'."""
+
+    BUF_SIZE = 512
+
+    def __init__(self):
+        super().__init__('inject', gdb.COMMAND_USER)
+
+    def invoke(self, arg, from_tty):
+        cmd = arg.strip().strip('"').strip("'")
+        if not cmd:
+            print("Usage: inject COMMAND")
+            return
+        try:
+            h = int(gdb.parse_and_eval("'main.c'::rxHead"))
+            for ch in cmd:
+                gdb.execute("set 'main.c'::UserRxBufferFS[{}] = {}".format(h, ord(ch)))
+                h = (h + 1) % self.BUF_SIZE
+            gdb.execute("set 'main.c'::UserRxBufferFS[{}] = 13".format(h))   # CR
+            h = (h + 1) % self.BUF_SIZE
+            gdb.execute("set 'main.c'::rxHead = {}".format(h))
+            print("inject: '{}\\r' ({} bytes) -> rxHead={}".format(cmd, len(cmd) + 1, h))
+        except Exception as e:
+            print("inject error: {}".format(e))
+
+InjectCmd()
+
+end
+
 # ─── st: quick state dump ────────────────────────────────────────────────────
 define st
   printf "stepperState  : %s\n",   stepperState
