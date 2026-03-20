@@ -302,6 +302,13 @@ check:
 	else \
 		echo "  [OK]  GPIO_MODE_IT_RISING_FALLING patch applied"; \
 	fi; \
+	GHOST=$$(grep -rhoE '\b(esBlocked|initParams|writeParams|readParams|ProcessLineOld)\b' initcfg/ scripts/ 2>/dev/null | tr '\n' ' '); \
+	if [ -n "$$GHOST" ]; then \
+		echo "  [FAIL] GDB scripts reference removed firmware symbols: $$GHOST"; \
+		FAIL=1; \
+	else \
+		echo "  [OK]  GDB scripts: no stale firmware symbol references"; \
+	fi; \
 	if [ $$FAIL -eq 0 ]; then \
 		echo ""; echo "======== CHECK OK ========"; echo ""; \
 	else \

@@ -281,7 +281,7 @@ can condition the beep on actual success.
 | Parameter validation    | F           | B+          | Range + cross-param + EEPROM guard |
 | UX / feedback           | C           | B+          | Buzzer on all meaningful events |
 | Watchdog / recovery     | F           | F           | Still no WDT (deferred by design) |
-| Dead code               | C           | C           | Still present (ProcessLineOld etc.) |
+| Dead code               | C           | A           | Removed: ProcessLineOld, initParams, writeParams, readParams |
 
 ### Self-audit takeaway
 
@@ -289,6 +289,27 @@ The second opinion was useful for a structured overview, but the most interestin
 (decelIndex OOB, esBlocked shadow, snapA scope) were found during implementation — not
 by static reading alone. Each fix forced a re-read of surrounding code, which found
 the next issue. The process compounds.
+
+### Post-audit: stale GDB script reference (found later)
+
+After removing `esBlocked` from the firmware, the GDB `st` command in `project.gdb`
+still referenced it. This was not caught by `make clean` or `make` — and it
+**never will be**, because GDB scripts are interpreted text files, not compiled.
+The C compiler checks C symbols. GDB only fails when you actually run `st` in a
+live session.
+
+**Root cause:** when removing a firmware symbol, only the `.c`/`.h` files were
+searched. Dev tooling (`.gdb`, `.py` dashboard panels, `inject_cmd.sh`) was not.
+
+**Fix applied:** added a third check to `make check`:
+```makefile
+GHOST=$(grep -rhoE '\b(esBlocked|initParams|...)\b' initcfg/ scripts/)
+```
+If any removed symbol appears in GDB scripts, `make check` fails immediately.
+
+**Rule:** when removing a firmware variable, grep the whole repo — not just source
+files. Extend the `make check` symbol list with the removed name.
+`make check` is now the single place that enforces this: three checks, one command.
 
 ---
 
