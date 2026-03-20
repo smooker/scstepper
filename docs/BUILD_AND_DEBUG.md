@@ -70,68 +70,53 @@ text: ~79KB   data: ~900B   bss: ~14KB
 - **Interface**: SWD (PA13=SWDIO, PA14=SWCLK)
 
 ### GDB Setup
-The `.gdbinit` in the project root is loaded automatically. It contains:
-- Full **gdb-dashboard** (visual TUI with registers, source, disassembly)
-- **SVD** register viewer via PyCortexMDebug (`STM32F411.svd`)
-- Custom commands `ag` and `ld`
+`initcfg/gdbinit` — GDB Dashboard (visual TUI: source, registers, disassembly).
+`initcfg/project.gdb` — project-specific commands.
+`PyCortexMDebug/` — SVD peripheral register viewer (git submodule).
 
-> **Note**: PyCortexMDebug is a git submodule in `PyCortexMDebug/` and loaded
-> via a relative path — no manual setup needed.
-
-Your `~/.gdbinit` must allow local init files:
-```
-set auto-load local-gdbinit on
-add-auto-load-safe-path .
+Install once per user:
+```bash
+make userinstall
 ```
 
 ### Launch GDB
 ```bash
-./go_gdb.sh
-```
-This runs:
-```bash
-arm-none-eabi-gdb -x ./script2.gdb ./build/stepper_sc.elf
+scripts/go_gdb.sh
 ```
 
-### Custom GDB commands
+### GDB commands
 
-**`ag`** — connect to Black Magic Probe and attach to target:
-```
-target extended-remote /dev/ttyBmpGdb
-monitor swdp_scan
-attach 1
-monitor traceswo
-```
+| Command | Action |
+|---------|--------|
+| `ag` | Connect BMP, SWD scan, attach target |
+| `ld` | Load ELF symbols (no flash) |
+| `fwc` | `ld` + verify flash matches ELF on disk |
+| `fl` | Flash `build/scstepper.hex` to target + verify |
 
-**`ld`** — flash firmware and verify:
-```
-file ./build/stepper_sc.elf
-load ./build/stepper_sc.hex
-set remote exec-file ./build/stepper_sc.elf
-compare-sections
-```
+| Command | Action |
+|---------|--------|
+| `st` | Motor state: stepperState, posSteps, posHomed, semaphore… |
+| `params` | All motor parameters |
+| `rxbuf` | CDC RX ring buffer occupancy + raw bytes |
+| `mem_regions` | STM32F411 memory map |
+| `inject CMD` | Write CDC command into RX buffer (firmware executes on `c`) |
+| `svd TIM2` | STM32 peripheral registers via SVD |
 
 ### Typical session
 ```
-(gdb) ag       ← connect BMP, scan SWD, attach STM32
-(gdb) ld       ← flash stepper_sc.hex, verify sections
-(gdb) continue ← run firmware
+(gdb) ag          ← attach (no symbols yet)
+(gdb) fwc         ← load symbols + check flash vs ELF
+(gdb) c           ← run
+Ctrl+C            ← halt
+(gdb) st          ← inspect state
 ```
 
-To set a breakpoint and halt at main:
+Flash new firmware:
 ```
 (gdb) ag
-(gdb) ld
-(gdb) hbreak main
-(gdb) run
-```
-
-### SVD register inspection
-After `ag`, STM32F411 peripheral registers are accessible via:
-```
-(gdb) svd TIM2
-(gdb) svd GPIOB
-(gdb) svd RCC
+(gdb) fwc         ← see what's currently on target
+(gdb) fl          ← flash + verify
+(gdb) c
 ```
 
 ---
