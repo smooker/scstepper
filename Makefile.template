@@ -320,6 +320,12 @@ check:
 	else \
 		echo "  [OK]  GDB scripts: no stale firmware symbol references"; \
 	fi; \
+	if ! grep -q 'MX_TIM9_Init' Core/Src/main.c; then \
+		echo "  [FAIL] MX_TIM9_Init missing from main.c — CubeMX may have erased it; restore from USER CODE 4"; \
+		FAIL=1; \
+	else \
+		echo "  [OK]  TIM9 debounce timer init present"; \
+	fi; \
 	if [ $$FAIL -eq 0 ]; then \
 		echo ""; echo "======== CHECK OK ========"; echo ""; \
 	else \

@@ -192,6 +192,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
+static void MX_TIM9_Init(void);  /* debounce timer — survives CubeMX regen here */
 void SafeState_And_Blink(void);
 void ProcessEvents(void);
 void RunHome(void);
@@ -797,6 +798,7 @@ int main(void)
   MX_USB_DEVICE_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  MX_TIM9_Init();  /* debounce timer — must remain here after CubeMX regen */
 
   /* ── Firmware CRC self-check — first thing, before any peripherals ──────
    * Block at 0x0803FF80: 31 x uint32 label + 1 x uint32 CRC (128 bytes).
@@ -1232,6 +1234,25 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+/* TIM9 — debounce confirmation timer, 1 ms free-running.
+ * No HAL handle needed: ISR accesses TIM9 registers directly.
+ * TIM9 is on APB2 (96 MHz). PSC=95 → 1 MHz tick. ARR=999 → 1 ms period.
+ * IRQ vector: TIM1_BRK_TIM9_IRQn (shared with TIM1 break, unused here).
+ * Function body here (USER CODE 4) so CubeMX regeneration does not erase it. */
+static void MX_TIM9_Init(void)
+{
+    __HAL_RCC_TIM9_CLK_ENABLE();
+    TIM9->PSC  = 95;             /* 96 MHz / 96 = 1 MHz */
+    TIM9->ARR  = 999;            /* 1 MHz / 1000 = 1 ms period */
+    TIM9->CNT  = 0;
+    TIM9->EGR  = TIM_EGR_UG;    /* load PSC/ARR immediately */
+    TIM9->SR   = 0;              /* clear UIF set by EGR_UG */
+    TIM9->DIER = TIM_DIER_UIE;  /* update interrupt enable */
+    HAL_NVIC_SetPriority(TIM1_BRK_TIM9_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(TIM1_BRK_TIM9_IRQn);
+    TIM9->CR1  = TIM_CR1_CEN;   /* start */
+}
+
 /* ---- Button/endstop event flags (set in ISR, processed in main) ------- */
 #define DEBOUNCE_MS       30   /* press debounce */
 #define DEBOUNCE_REL_MS   50   /* release lockout (switches bounce more on release) */
@@ -1245,6 +1266,11 @@ static void MX_GPIO_Init(void)
 #define EVT_STEPL     (1U << 6)
 #define EVT_STEPR     (1U << 7)
 #define EVT_HOME      (1U << 8)  /* home combo: ES_L hit + JOGL held + JOGR pressed */
+/* Debounce-in-progress flags — EXTI fired but inside debounce window; main loop ignores */
+#define EVT_DB_JOGL   (1U << 9)
+#define EVT_DB_JOGR   (1U << 10)
+#define EVT_DB_STEPL  (1U << 11)
+#define EVT_DB_STEPR  (1U << 12)
 
 #define JOG_HOLD_MS   300
 
@@ -1265,24 +1291,42 @@ static volatile uint32_t jogPressTickR = 0;
 
 /* snapA/snapB declared at top of file — written here, read everywhere */
 
+/* ============================================================
+ * Button debounce — two-phase design:
+ *
+ *   Phase 1 — EXTI ISR (hardware edge, may be bouncing):
+ *     EVT_DB_x == 0  →  first edge → arm: lastTick = now, set EVT_DB_x, return
+ *     EVT_DB_x == 1  →  bounce within window → ignore (SysTick is already watching)
+ *
+ *   Phase 2 — TIM1_BRK_TIM9_IRQHandler (TIM9 free-running, 1 ms period):
+ *     When EVT_DB_x is set and debounce window has expired:
+ *       → update snapA/snapB, call HAL_GPIO_EXTI_Callback(pin) directly
+ *       → callback re-enters with EVT_DB_x == 1 and now−lastTick >= DEBOUNCE
+ *       → reads settled pin level → fires real EVT_JOGL_DN/UP etc. → clears EVT_DB_x
+ *
+ * EVT_DB_x acts as the state machine discriminator:
+ *   0 = idle      1+fresh edge = arming     1+time expired = settled → fire
+ *
+ * "HAL_GPIO_EXTI_Callback is just a function at an address — SysTick can
+ *  branch to it exactly as the NVIC does.  LL thinking, not HAL thinking." — smooker
+ * ============================================================ */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    uint32_t now = HAL_GetTick();
-
-    /* Snapshot all input pins — ONE read per port */
+    /* Snapshot first — one consistent read per port; now after */
     snapA = GPIOA->IDR;
     snapB = GPIOB->IDR;
+    uint32_t now = HAL_GetTick();
 
     switch (GPIO_Pin)
     {
-    /* ---- Endstops: edge lockout, instant stop ---- */
+    /* ---- Endstops: lockout debounce, instant Stepper_Stop ---- */
     case ES_L_Pin:
         if (!endstopsEn) break;
         if (!diagMode) {
             if (now - lastTick_esL >= DEBOUNCE_MS) {
                 lastTick_esL = now;
                 Stepper_Stop();
-                buzzRequest = 1;  /* beep on endstop hit */
+                buzzRequest = 1;
                 evtFlags |= EVT_ES_L;
             }
         } else if (now - lastTick_esL >= DEBOUNCE_MS) {
@@ -1297,7 +1341,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
             if (now - lastTick_esR >= DEBOUNCE_MS) {
                 lastTick_esR = now;
                 Stepper_Stop();
-                buzzRequest = 1;  /* beep on endstop hit */
+                buzzRequest = 1;
                 evtFlags |= EVT_ES_R;
             }
         } else if (now - lastTick_esR >= DEBOUNCE_MS) {
@@ -1306,71 +1350,118 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         }
         break;
 
-    /* ---- Jog buttons: press debounced, release instant ---- */
-    /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     * BUG: RELEASE HAS NO DEBOUNCE GUARD.
-     * lastTick_jogL is set unconditionally on release → bounce on release
-     * fires multiple EVT_JOGL_UP events AND resets the press debounce timer
-     * (blocking legitimate quick re-press for DEBOUNCE_REL_MS).
-     * Fix: apply same DEBOUNCE_REL_MS guard on release path.
-     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
+    /* ---- Jog buttons: two-phase debounce (see comment above) ---- */
     case BUTT_JOGL_Pin:
         if (!buttonsEn) break;
-        if (snapA & BUTT_JOGL_Pin) {
-            /* release — stop only if continuous jog; let fixed Jog() complete */
-            if (jogStateL == JOG_CONT) Stepper_Stop();
+        if (evtFlags & EVT_DB_JOGL) {
+            /* Phase 2 (SysTick re-call) or bounce: check if window expired */
+            if (now - lastTick_jogL >= DEBOUNCE_REL_MS) {
+                evtFlags &= ~EVT_DB_JOGL;
+                lastTick_jogL = now;
+                if (!(snapA & BUTT_JOGL_Pin)) {     /* LOW  = pressed */
+                    if (snapA & ES_L_Pin) {          /* ES_L not active */
+                        jogPressTickL = now;
+                        evtFlags |= EVT_JOGL_DN;
+                    }
+                } else {                             /* HIGH = released */
+                    if (jogStateL == JOG_CONT) Stepper_Stop();
+                    evtFlags |= EVT_JOGL_UP;
+                }
+            }
+            /* else: still within window — SysTick will call again */
+        } else {
+            /* Phase 1: first edge → arm debounce window */
             lastTick_jogL = now;
-            evtFlags |= EVT_JOGL_UP;
-        } else if (now - lastTick_jogL >= DEBOUNCE_REL_MS) {
-            if (!(snapA & ES_L_Pin)) break;  /* ES_L active = blocked */
-            lastTick_jogL = now;
-            jogPressTickL = now;
-            evtFlags |= EVT_JOGL_DN;
+            evtFlags |= EVT_DB_JOGL;
         }
         break;
 
     case BUTT_JOGR_Pin:
         if (!buttonsEn) break;
-        if (snapA & BUTT_JOGR_Pin) {
-            /* release — stop only if continuous jog; let fixed Jog() complete */
-            if (jogStateR == JOG_CONT) Stepper_Stop();
-            lastTick_jogR = now;
-            evtFlags |= EVT_JOGR_UP;
-        } else if (now - lastTick_jogR >= DEBOUNCE_REL_MS) {
-            /* home combo: at ES_L + JOGL held + JOGR pressed */
-            if (!(snapA & ES_L_Pin) && !(snapA & BUTT_JOGL_Pin)) {
+        if (evtFlags & EVT_DB_JOGR) {
+            if (now - lastTick_jogR >= DEBOUNCE_REL_MS) {
+                evtFlags &= ~EVT_DB_JOGR;
                 lastTick_jogR = now;
-                evtFlags |= EVT_HOME;
-            } else {
-                if (!(snapA & ES_R_Pin)) break;  /* ES_R active = blocked */
-                lastTick_jogR = now;
-                jogPressTickR = now;
-                evtFlags |= EVT_JOGR_DN;
+                if (!(snapA & BUTT_JOGR_Pin)) {     /* LOW  = pressed */
+                    /* home combo: ES_L active + JOGL held + JOGR pressed */
+                    if (!(snapA & ES_L_Pin) && !(snapA & BUTT_JOGL_Pin)) {
+                        evtFlags |= EVT_HOME;
+                    } else if (snapA & ES_R_Pin) {  /* ES_R not active */
+                        jogPressTickR = now;
+                        evtFlags |= EVT_JOGR_DN;
+                    }
+                } else {                             /* HIGH = released */
+                    if (jogStateR == JOG_CONT) Stepper_Stop();
+                    evtFlags |= EVT_JOGR_UP;
+                }
             }
+        } else {
+            lastTick_jogR = now;
+            evtFlags |= EVT_DB_JOGR;
         }
         break;
 
-    /* ---- Step buttons: press debounced, release ignored ---- */
+    /* ---- Step buttons: two-phase debounce, press only ---- */
     case BUTT_STEPL_Pin:
         if (!buttonsEn) break;
-        if (!(snapA & ES_L_Pin)) break;      /* ES_L active = blocked */
-        if (now - lastTick_stepL >= DEBOUNCE_MS) {
+        if (evtFlags & EVT_DB_STEPL) {
+            if (now - lastTick_stepL >= DEBOUNCE_MS) {
+                evtFlags &= ~EVT_DB_STEPL;
+                lastTick_stepL = now;
+                if (!(snapB & BUTT_STEPL_Pin) && (snapA & ES_L_Pin))
+                    evtFlags |= EVT_STEPL;
+            }
+        } else {
             lastTick_stepL = now;
-            evtFlags |= EVT_STEPL;
+            evtFlags |= EVT_DB_STEPL;
         }
         break;
 
     case BUTT_STEPR_Pin:
         if (!buttonsEn) break;
-        if (!(snapA & ES_R_Pin)) break;      /* ES_R active = blocked */
-        if (now - lastTick_stepR >= DEBOUNCE_MS) {
+        if (evtFlags & EVT_DB_STEPR) {
+            if (now - lastTick_stepR >= DEBOUNCE_MS) {
+                evtFlags &= ~EVT_DB_STEPR;
+                lastTick_stepR = now;
+                if (!(snapB & BUTT_STEPR_Pin) && (snapA & ES_R_Pin))
+                    evtFlags |= EVT_STEPR;
+            }
+        } else {
             lastTick_stepR = now;
-            evtFlags |= EVT_STEPR;
+            evtFlags |= EVT_DB_STEPR;
         }
         break;
 
     default:
         break;
+    }
+}
+
+/* TIM9 fires HAL_GPIO_EXTI_Callback directly — it is just a function at an address.
+ * "HAL_GPIO_EXTI_Callback is not sacred: NVIC jumps to it, TIM9 ISR can too." — LL thinking.
+ * Defined here (not in stm32f4xx_it.c) so static variables remain accessible.
+ * TIM9: free-running, 96MHz/96/1000 = 1 ms period. PSC=95, ARR=999. */
+void TIM1_BRK_TIM9_IRQHandler(void)
+{
+    if (!(TIM9->SR & TIM_SR_UIF)) return;
+    TIM9->SR = ~TIM_SR_UIF;   /* clear update interrupt flag */
+
+    uint32_t now = HAL_GetTick();
+    if ((evtFlags & EVT_DB_JOGL)  && (now - lastTick_jogL  >= DEBOUNCE_REL_MS)) {
+        snapA = GPIOA->IDR; snapB = GPIOB->IDR;
+        HAL_GPIO_EXTI_Callback(BUTT_JOGL_Pin);
+    }
+    if ((evtFlags & EVT_DB_JOGR)  && (now - lastTick_jogR  >= DEBOUNCE_REL_MS)) {
+        snapA = GPIOA->IDR; snapB = GPIOB->IDR;
+        HAL_GPIO_EXTI_Callback(BUTT_JOGR_Pin);
+    }
+    if ((evtFlags & EVT_DB_STEPL) && (now - lastTick_stepL >= DEBOUNCE_MS)) {
+        snapA = GPIOA->IDR; snapB = GPIOB->IDR;
+        HAL_GPIO_EXTI_Callback(BUTT_STEPL_Pin);
+    }
+    if ((evtFlags & EVT_DB_STEPR) && (now - lastTick_stepR >= DEBOUNCE_MS)) {
+        snapA = GPIOA->IDR; snapB = GPIOB->IDR;
+        HAL_GPIO_EXTI_Callback(BUTT_STEPR_Pin);
     }
 }
 
@@ -1566,8 +1657,8 @@ void ProcessEvents(void)
 {
     uint32_t now = HAL_GetTick();
     __disable_irq();
-    uint32_t flags = evtFlags;
-    evtFlags &= ~flags;  /* atomic read-clear: ISR cannot set a new flag between read and clear */
+    uint32_t flags = evtFlags & ~(EVT_DB_JOGL|EVT_DB_JOGR|EVT_DB_STEPL|EVT_DB_STEPR);
+    evtFlags &= ~flags;  /* clear only real events — EVT_DB_* stay for TIM9 to consume */
     __enable_irq();
 
     /* ---- Endstops ---- */

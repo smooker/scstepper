@@ -326,25 +326,52 @@ Beeps on: jog press, step press, endstop hit, home complete,
 
 ---
 
-## 11. Known bugs
+## 11. Button debounce — two-phase design (TIM9)
 
-### DEBOUNCE НЕ РАБОТИ — release path няма guard (jog и step бутони)
+**Fixed.** The old single-phase ISR had no debounce guard on the release path — bounce on
+release fired multiple `EVT_JOGL_UP` events and reset the press timer unconditionally.
 
-`lastTick_jogL` (и `jogR`, `stepL`, `stepR`) се сетва **без проверка** при release:
+### Design
 
-```c
-if (snapA & BUTT_JOGL_Pin) {   // release
-    lastTick_jogL = now;        // ← UNCONDITIONAL — bounce fires this again
-    evtFlags |= EVT_JOGL_UP;   // ← duplicate UP events on bouncy release
-}
+```
+Phase 1 — HAL_GPIO_EXTI_Callback (hardware edge, may be bouncing):
+  EVT_DB_x == 0  →  first edge → arm: lastTick = now, set EVT_DB_x, return
+  EVT_DB_x == 1  →  bounce within window → ignore (TIM9 is already watching)
+
+Phase 2 — TIM1_BRK_TIM9_IRQHandler (TIM9, 1 ms period):
+  EVT_DB_x set && now − lastTick >= DEBOUNCE:
+    → update snapA/snapB → call HAL_GPIO_EXTI_Callback(pin) directly
+    → re-enters: EVT_DB_x==1, time expired → reads settled pin → fires real event
 ```
 
-Последствия:
-1. Bounce при release → множество `EVT_JOGL_UP` → main loop обработва повече от едно release
-2. Bounce при release → нулира `lastTick_jogL` → press debounce timer reset → блокира легитимно бързо повторно натискане за `DEBOUNCE_REL_MS` (50ms)
+`EVT_DB_x` is the state machine discriminator:
+- `0` = idle
+- `1` + fresh edge = arming (return, wait for TIM9)
+- `1` + time expired = settled → fire + clear
 
-**Fix:** добави `now - lastTick_jogL >= DEBOUNCE_REL_MS` guard и за release path — същото като press.
-Засяга: `BUTT_JOGL_Pin`, `BUTT_JOGR_Pin`, `BUTT_STEPL_Pin`, `BUTT_STEPR_Pin`.
+### Key insight — LL thinking
+
+`HAL_GPIO_EXTI_Callback` is just a C function at an address. The NVIC jumps to it on a
+hardware edge. TIM9 ISR can jump to it too — it is not "owned" by the EXTI hardware.
+Thinking at the register/assembly level (LL, not HAL) reveals patterns that HAL naming
+conventions obscure. The callback becomes a reusable state machine, not a hardware-bound routine.
+
+### TIM9 configuration
+
+- APB2 clock 96 MHz, PSC=95 → 1 MHz tick, ARR=999 → **1 ms period**
+- IRQ vector: `TIM1_BRK_TIM9_IRQn` (shared with TIM1 break; TIM1 unused)
+- Priority 2 (preempted by endstops/TIM2 at priority 0, not by itself)
+- ISR defined in `main.c` (not `stm32f4xx_it.c`) — keeps `static` variables accessible
+
+### CubeMX survival
+
+| What | Where in main.c | Protected by |
+|------|-----------------|--------------|
+| `static void MX_TIM9_Init(void);` | `USER CODE BEGIN PFP` | CubeMX preserves |
+| `MX_TIM9_Init();` call | `USER CODE BEGIN 2` | CubeMX preserves |
+| `MX_TIM9_Init()` body | `USER CODE BEGIN 4` | CubeMX preserves |
+| `TIM1_BRK_TIM9_IRQHandler` | `USER CODE BEGIN 4` | CubeMX preserves |
+| Detection | `make check` | `[OK] TIM9 debounce timer init present` |
 
 ---
 
@@ -385,7 +412,78 @@ Edit `Makefile.template`, not `Makefile`. CubeMX will overwrite `Makefile`.
 
 ---
 
-## 13. TODO (open items)
+## 13. Reasoning principles (LL thinking)
+
+Hard-won design principles from this project. Useful far beyond it.
+
+### A callback is just a function at an address
+
+`HAL_GPIO_EXTI_Callback`, ISR handlers, HAL callbacks — they are ordinary C functions.
+The NVIC jumps to them via a vector table entry. Any other code can call them directly.
+
+**Consequence:** When you need deferred or periodic re-entry into the same logic, don't
+duplicate the logic. Call the function. The debounce design exploits this: TIM9 ISR calls
+`HAL_GPIO_EXTI_Callback(pin)` directly, re-entering the same state machine with fresh pin state.
+
+HAL naming (`HAL_GPIO_EXTI_Callback`, `HAL_SYSTICK_Callback`) implies ownership by a
+hardware event. LL thinking removes that illusion: there is an address, and anything can
+branch to it.
+
+### Don't share SysTick — use a dedicated timer
+
+`HAL_SYSTICK_Callback` runs from SysTick, which HAL already uses for `HAL_GetTick()` and
+`HAL_Delay()`. Hooking into it adds coupling and timing uncertainty.
+
+When you need a periodic tick for your own purpose: pick a free timer (TIM9 here),
+configure it with direct register writes, define the IRQ handler in the file where your
+`static` variables live. No HAL handle needed. No extern gymnastics.
+
+```c
+/* Direct register init — no HAL handle, no overhead */
+__HAL_RCC_TIM9_CLK_ENABLE();
+TIM9->PSC = 95; TIM9->ARR = 999;   /* 96 MHz → 1 ms */
+TIM9->EGR = TIM_EGR_UG;  TIM9->SR = 0;
+TIM9->DIER = TIM_DIER_UIE;
+HAL_NVIC_SetPriority(TIM1_BRK_TIM9_IRQn, 2, 0);
+HAL_NVIC_EnableIRQ(TIM1_BRK_TIM9_IRQn);
+TIM9->CR1 = TIM_CR1_CEN;
+```
+
+### Use flags as state machine discriminators
+
+A single `volatile uint32_t evtFlags` bit can carry both "pending" and "which phase" meaning.
+`EVT_DB_JOGL`:
+- `0` = idle — ISR arms on first edge
+- `1` + time not expired = bouncing — ISR ignores, TIM9 waits
+- `1` + time expired = settled — TIM9 fires callback, callback reads pin and fires real event
+
+No extra confirm flag, no separate state variable. The existing flag IS the state.
+
+### Define IRQ handlers where the data lives
+
+IRQ handlers don't have to live in `stm32f4xx_it.c`. That file is convention, not law.
+The linker resolves weak symbols — any `.c` file can define a strong `TIM1_BRK_TIM9_IRQHandler`.
+
+Keeping `TIM1_BRK_TIM9_IRQHandler` in `main.c` means all the `static volatile` debounce
+variables are directly accessible — no `extern`, no header pollution.
+
+### CubeMX eats everything outside USER CODE sections
+
+Any code placed outside a `/* USER CODE BEGIN x */ ... /* USER CODE END x */` block
+is silently erased on the next CubeMX regeneration. Rules:
+
+| What | Where |
+|------|-------|
+| Custom function prototypes | `USER CODE BEGIN PFP` |
+| Init calls in main() | `USER CODE BEGIN 2` |
+| Custom function bodies | `USER CODE BEGIN 4` |
+| Custom ISR bodies | `USER CODE BEGIN 4` |
+
+Add a `make check` guard for any critical init that must survive regen.
+
+---
+
+## 14. TODO (open items)
 
 See `docs/TODO.md` for full details:
 - Unified ramp table (index 0 = center, symmetric accel/decel)
