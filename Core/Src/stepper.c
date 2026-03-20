@@ -558,10 +558,12 @@ void Stepper_ISR(void)
         break;
 
     case STEPPER_DECEL:
-        currentPeriod = decelTable[decelIndex];
-        decelIndex--;
-        if (decelIndex < 0)
+        if (decelIndex < 0) {
             currentPeriod = maxPeriod;
+        } else {
+            currentPeriod = decelTable[decelIndex];
+            decelIndex--;
+        }
         break;
     case STEPPER_IDLE:
     default:

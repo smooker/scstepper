@@ -76,6 +76,24 @@ to catch corrupted EEPROM combinations.
 
 ---
 
+## Unified ramp table with index=0 as center
+
+Currently two separate tables: `accelTable[]` and `decelTable[]`, each indexed
+from 0 (slow) to size-1 (fast), walked in opposite directions.
+
+**Idea:** single table `rampTable[MAX_RAMP_STEPS]` with index 0 = center (full speed),
+positive indices = decelerating, negative indices = accelerating. Symmetric by design.
+
+Benefits:
+- One `BuildRampTables()` pass instead of two
+- Accel and decel walk the same table in opposite directions
+- `decelIndex` starts at 0 and increments — no negative index boundary issue
+- Natural representation of trapezoidal profile
+
+Effort: significant refactor of `StartMove()`, `Stepper_ISR()`, index management.
+
+---
+
 ## Soft position limits (post-home)
 
 After homing + `range` measurement, `posSteps` is tracked but not enforced.
