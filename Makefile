@@ -236,25 +236,22 @@ install:
 	@echo ""
 	@echo "=== Installing developer environment ==="
 	@echo ""
-	@echo "--- [1/4] $(HOME)/.gdbinit (auto-load local .gdbinit) ---"
+	@echo "--- [1/3] $(HOME)/.gdbinit (GDB auto-load enable) ---"
 	@cp -v initcfg/dot-gdbinit-for-home $(HOME)/.gdbinit
 	@echo ""
-	@echo "--- [2/4] .gdbinit (GDB Dashboard, local project) ---"
-	@cp -v initcfg/gdbinit .gdbinit
-	@echo ""
-	@echo "--- [3/4] udev rules -> $(UDEV_DIR) ---"
+	@echo "--- [2/3] udev rules -> $(UDEV_DIR) ---"
 	@cp -v scripts/99-steppersys.rules $(UDEV_DIR)/99-steppersys.rules
 	@udevadm control --reload-rules
 	@echo "udev rules reloaded"
 	@echo ""
-	@echo "--- [4/4] Qt Creator + clangd files (make qtc) ---"
+	@echo "--- [3/3] Qt Creator + clangd files (make qtc) ---"
 	@$(MAKE) --no-print-directory qtc
 	@echo ""
 	@echo "======== INSTALL OK ========"
 	@echo ""
 	@echo "  Open qtc/scstepper.creator in Qt Creator"
 	@echo "  clangd uses compile_commands.json automatically"
-	@echo "  GDB Dashboard loaded from .gdbinit on every gdb start"
+	@echo "  GDB Dashboard loaded via scripts/go_gdb.sh -x initcfg/gdbinit"
 	@echo ""
 
 #######################################
