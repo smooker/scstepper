@@ -191,6 +191,111 @@ Independent assessment by a fresh Claude Sonnet 4.6 instance, given only the sou
 
 ---
 
+## Self-Audit Round — 2026-03-20
+
+After the second opinion flagged issues, we went through every finding systematically
+ourselves — not waiting for an external auditor. The process: read the second opinion,
+trace each issue back to the code, fix or justify. Where we fixed something, we
+re-read the surrounding code looking for follow-on issues. This uncovered bugs
+the second opinion missed.
+
+### What the second opinion found → what we actually did
+
+| Second opinion finding | Resolution |
+|------------------------|------------|
+| `evtFlags` race condition | **FIXED** — `__disable_irq()` / `__enable_irq()` wrap |
+| `Error_Handler` uses `HAL_Delay` | **FIXED** — `SafeState_And_Blink()`, NOP loop, Hi-Z GPIO |
+| No parameter validation | **FIXED** — `Stepper_ValidateParams()` + cross-param checks |
+| Soft position limits missing | **DEFERRED** — BY DESIGN for this use case (see TODO.md) |
+| `decelSteps` mismatch | **FIXED** — clamp to `decelSize` after recalculation |
+| `motorola` bypasses safety | **BY DESIGN** — hardware diagnostic tool, developer present |
+| No watchdog timer | **DEFERRED** — documented in TODO.md with pros/cons analysis |
+
+### Bugs we found ourselves (not in second opinion)
+
+**`decelIndex` out-of-bounds read** — `STEPPER_DECEL` case read `decelTable[decelIndex]`
+before checking `decelIndex >= 0`. When `decelSteps` was analytically calculated as 0
+(very short move), `decelIndex` went negative on first ISR tick → array underread.
+```c
+/* Before: read then check */
+currentPeriod = decelTable[decelIndex];  // ← UB if decelIndex < 0
+decelIndex--;
+if (decelIndex < 0) ...
+
+/* After: check then read */
+if (decelIndex < 0) {
+    currentPeriod = maxPeriod;
+} else {
+    currentPeriod = decelTable[decelIndex];
+    decelIndex--;
+}
+```
+
+**`esBlocked` software shadow** — we had a flag `esBlocked` that shadowed the
+hardware endstop state. It was read-modify-write from multiple contexts (ISR,
+main loop, CLI), with subtle clear-on-move semantics. On closer inspection:
+the flag added no value — the hardware state is always available via `snapA`.
+Removed entirely. All endstop checks now read `snapA` (GPIOA IDR snapshot taken
+at ISR entry), which is the single source of truth.
+
+**`snapA/snapB` scope too narrow** — declared `static volatile` inside the EXTI
+callback's local scope. Functions earlier in the file (`ProcessLine`, jog handling)
+could not see them, leading to some code still using `HAL_GPIO_ReadPin()` live reads
+instead of the snapshot. Promoted to file-scope `volatile` — now the whole file
+uses a single consistent view of pin state per ISR tick.
+
+**`HAL_Delay(100)` inside `moveto` error path** — blocking 100ms call in the main
+loop to produce a buzz beep. Blocks USB CDC TX, button polling, everything.
+Replaced with `buzzRequest = 1` (non-blocking, handled by main loop timer).
+
+**`post_cubemx.sh` missed FALLING edges** — script patched `GPIO_MODE_IT_RISING`
+→ `IT_RISING_FALLING` but not `GPIO_MODE_IT_FALLING` → `IT_RISING_FALLING`.
+After CubeMX regen, button release events were lost. Fixed: both patterns patched.
+
+### UX improvements from self-audit
+
+Buzzer feedback added at every meaningful user action:
+
+| Event | Buzz |
+|-------|------|
+| Jog button press (initial jog fires) | 1 beep |
+| Step button press (step move fires) | 1 beep |
+| Endstop hit during motion | 1 beep (was already there) |
+| `save` — params written to EEPROM | 1 beep |
+| `save` — blocked by validation warning | no beep (error message only) |
+| `initeeprom` — defaults written | 1 beep |
+| Blocked CDC move (endstop active) | 1 beep |
+| `moveto` out of range | 1 beep |
+| Home sequence complete | 1 beep (was already there) |
+
+`Stepper_SaveParams()` changed from `void` to `int` (1=saved, 0=blocked) so callers
+can condition the beep on actual success.
+
+### Updated maturity scorecard (self-assessment)
+
+| Dimension               | Score before | Score after | Change |
+|-------------------------|-------------|-------------|--------|
+| Fault handling          | B+          | A−          | SafeState solid, no deadlock |
+| Motor control logic     | B           | B+          | decelIndex OOB fixed, clamp added |
+| GPIO consistency        | C+          | A+          | Single source of truth, snapshots everywhere |
+| Parameter validation    | F           | B+          | Range + cross-param + EEPROM guard |
+| UX / feedback           | C           | B+          | Buzzer on all meaningful events |
+| Watchdog / recovery     | F           | F           | Still no WDT (deferred by design) |
+| Dead code               | C           | C           | Still present (ProcessLineOld etc.) |
+
+### Self-audit takeaway
+
+The second opinion was useful for a structured overview, but the most interesting bugs
+(decelIndex OOB, esBlocked shadow, snapA scope) were found during implementation — not
+by static reading alone. Each fix forced a re-read of surrounding code, which found
+the next issue. The process compounds.
+
+---
+
+*Self-audit by Claude Sonnet 4.6 + smooker — sw2 instance, 2026-03-20*
+
+---
+
 ## TODO: Code Size Optimization
 
 ### Quick wins (low risk)
