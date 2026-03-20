@@ -1504,7 +1504,7 @@ void RunHomeEx(uint8_t fromButtons)
     uint32_t parkSteps = motorParams.homeoff.u;
 
     /* Check if already on ES_L */
-    if (HAL_GPIO_ReadPin(ES_L_GPIO_Port, ES_L_Pin) == GPIO_PIN_RESET) {
+    if (!(snapA & ES_L_Pin)) {
         if (dbg) printf("home: already on ES_L, backoff\r\n");
     } else {
         /* Phase 1: approach ES_L at homespd (CCW), debounced ES poll */
@@ -1514,7 +1514,7 @@ void RunHomeEx(uint8_t fromButtons)
         uint8_t lowCount = 0;
         while (lowCount < 10 && Stepper_IsBusy()) {
             HOME_ABORT_CHECK(1)
-            if (HAL_GPIO_ReadPin(ES_L_GPIO_Port, ES_L_Pin) == GPIO_PIN_RESET)
+            if (!(snapA & ES_L_Pin))
                 lowCount++;
             else
                 lowCount = 0;
@@ -1542,7 +1542,7 @@ void RunHomeEx(uint8_t fromButtons)
     uint8_t highCount = 0;
     while (highCount < 10 && Stepper_IsBusy()) {
         HOME_ABORT_CHECK(1)
-        if (HAL_GPIO_ReadPin(ES_L_GPIO_Port, ES_L_Pin) == GPIO_PIN_SET)
+        if (snapA & ES_L_Pin)
             highCount++;
         else
             highCount = 0;
