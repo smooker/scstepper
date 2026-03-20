@@ -1631,8 +1631,10 @@ void RunCombo(void)
 void ProcessEvents(void)
 {
     uint32_t now = HAL_GetTick();
+    __disable_irq();
     uint32_t flags = evtFlags;
-    evtFlags &= ~flags;  /* clear only the flags we read */
+    evtFlags &= ~flags;  /* atomic read-clear: ISR cannot set a new flag between read and clear */
+    __enable_irq();
 
     /* ---- Endstops ---- */
     if (flags & EVT_ES_L) {

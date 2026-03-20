@@ -26,16 +26,15 @@ But `MyCDC_Receive_FS` wraps with `RX_BUF_SIZE`. If they differ, ring buffer cor
 
 **Fix:** Use a single `#define CDC_RX_BUF_SIZE 512` everywhere.
 
-### 3. evtFlags race condition (main.c:1556) — HIGH PRIORITY
+### 3. evtFlags race condition — **FIXED**
 
 ```c
+// ISR can set a new flag between read and clear — that flag is lost.
 uint32_t flags = evtFlags;
-evtFlags &= ~flags;       // NOT atomic
+evtFlags &= ~flags;       // NOT atomic  ← was the bug
 ```
 
-ISR can set a new flag between read and clear — that flag is lost.
-
-**Fix:** Disable interrupts around the read-clear:
+**Fix applied:** `__disable_irq()` / `__enable_irq()` around the read-clear in `ProcessEvents()`:
 ```c
 __disable_irq();
 uint32_t flags = evtFlags;
@@ -157,7 +156,7 @@ into an already-triggered endstop. Deliberate but risky.
 
 ## Priority Fix Order
 
-1. **evtFlags race** — can lose endstop/button events
+1. ~~**evtFlags race**~~ — **FIXED** 2026-03-20
 2. **Stepper_Stop() critical section** — state machine corruption
 3. **Parameter validation** — division by zero on `spmm=0`
 4. **Error_Handler** — use NOP loop instead of HAL_Delay
