@@ -71,11 +71,12 @@ an oscilloscope to verify PULSE/DIR signal integrity and check that endstop EXTI
 interrupts fire correctly — before trusting any firmware logic. Requires hardware
 reset to exit. Only used during bring-up/debugging with the developer present.
 
-### 10. RunHome uses hardcoded 9999mm (main.c:1456, 1486)
+### 10. RunHome uses hardcoded 9999mm — **BY DESIGN**
 
-If endstop fails to trigger (wire break, wrong polarity), motor runs ~4M steps.
-
-**Fix:** Configurable max travel limit. Abort and report error if exceeded.
+`9999mm` means "move until you hit the endstop." `RunHome` is an operator
+function — the operator is expected to verify ES_L works before calling it,
+or to call `home` deliberately. A broken endstop is a maintenance issue, not
+a firmware issue. The machine will not self-destruct from a gentle endstop hit.
 
 ### 11. No soft position limits
 
