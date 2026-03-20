@@ -1720,14 +1720,16 @@ void ProcessEvents(void)
         }
     }
 
-    /* ---- Step buttons (HW pin check — don't move into active endstop!) ---- */
+    /* ---- Step buttons ---- */
     if (flags & EVT_STEPL) {
-        if (diagMode) { printf("BUTT_STEPL\r\n"); PrintPrompt(); }
+        if (diagMode) { printf("BUTT_STEPL snapB=%08lx\r\n", snapB); PrintPrompt(); }
+        else if (!(snapB & BUTT_STEPL_Pin)) { /* button released by now — ignore */ }
         else if (!(snapA & ES_L_Pin)) { /* ES_L active = blocked */ }
         else { Stepper_Move(-motorParams.stepmm.f); }
     }
     if (flags & EVT_STEPR) {
-        if (diagMode) { printf("BUTT_STEPR\r\n"); PrintPrompt(); }
+        if (diagMode) { printf("BUTT_STEPR snapB=%08lx\r\n", snapB); PrintPrompt(); }
+        else if (!(snapB & BUTT_STEPR_Pin)) { /* button released by now — ignore */ }
         else if (!(snapA & ES_R_Pin)) { /* ES_R active = blocked */ }
         else { Stepper_Move(motorParams.stepmm.f); }
     }
