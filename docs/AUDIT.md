@@ -166,3 +166,56 @@ into an already-triggered endstop. Deliberate but risky.
 
 *Audited by Claude Opus 4.6 — laptop instance, 2026-03-13*
 *Firmware developed in collaboration with Claude Opus 4.6 — sw2 instance*
+
+---
+
+## Second Opinion — 2026-03-20
+
+Independent assessment by a fresh Claude Sonnet 4.6 instance, given only the source files
+(no prior context about what was done or why).
+
+### Maturity Scorecard
+
+| Dimension               | Score | Notes                                                                 |
+|-------------------------|-------|-----------------------------------------------------------------------|
+| Developer ergonomics    | A+    | Best-in-class GDB tooling, clean build/debug/flash workflow           |
+| Code organization       | A     | Clear separation (stepper.c / main.c), USER CODE sections work        |
+| Fault handling          | B+    | SafeState_And_Blink() solid; Error_Handler deadlock breaks it         |
+| Motor control logic     | B     | Physics-based ramps; decelSteps mismatch + no soft limits             |
+| CubeMX robustness       | B−    | Survives regen via template; GPIO patch is fragile; .ioc not in repo  |
+| Unfixed known bugs      | D     | 7+ documented issues still open (see Bugs section above)              |
+| Watchdog / recovery     | F     | No watchdog timer; no stall detection; no position sanity check       |
+
+### Highlighted Strengths
+
+- **GDB tooling is industry-grade**: `inject` writes test commands into CDC RX buffer
+  without recompiling; `scstepper_panel.py` Dashboard module shows live motor state,
+  ring buffer occupancy, jog events. Real time-saver.
+- **Makefile survives CubeMX regeneration**: `post_cubemx.sh` + `Makefile.template`
+  + `make check` is a mature, disciplined approach to CubeMX workflow.
+- **Documentation is honest**: audit explicitly lists bugs with fixes. Sigrok captures
+  are in the repo and referenced in analysis. Not marketing docs.
+- **Boot safety**: stuck-input CQ CQ CQ morse loop, `buttonsEn = 0` until boot
+  completes, 10-sample endstop debouncing. Defensive programming.
+- **Hardware FPU sqrt** (`vsqrt.f32` inline asm) — avoids libm overhead.
+
+### Minimum Roadmap to "Not Dangerous"
+
+1. Fix `evtFlags` race — `__disable_irq()` around read-clear (5 min)
+2. Replace `Error_Handler` `HAL_Delay` with NOP busy-loop (15 min)
+3. Add soft position limits + parameter range validation (2 hrs)
+4. Guard `motorola` diagnostic loop with endstop checks (1 hr)
+5. Add watchdog timer (1 hr)
+6. Smoke test on hardware (2 hrs)
+
+### Verdict
+
+> *"A capable, well-documented development firmware with exceptional developer tooling —
+> but not suitable for production hardware. It works brilliantly in the lab because the
+> developer is present to reset it. The audit itself is excellent; the fact that all
+> critical issues remain unfixed suggests this is prototype/exploratory work, not a
+> commercial product."*
+
+---
+
+*Second opinion by Claude Sonnet 4.6 — sw2 instance, 2026-03-20*
