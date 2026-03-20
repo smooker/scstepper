@@ -286,18 +286,26 @@ size: $(BUILD_DIR)/$(TARGET).elf
 	$(SZ) --format=berkeley $<
 
 #######################################
-# check vs template
+# check vs template + post_cubemx patches
 #######################################
 check:
-	@if diff -q Makefile Makefile.template > /dev/null 2>&1; then \
-		echo ""; \
-		echo "======== CHECK OK ========"; \
-		echo ""; \
+	@FAIL=0; \
+	if diff -q Makefile Makefile.template > /dev/null 2>&1; then \
+		echo "  [OK]  Makefile matches template"; \
 	else \
-		echo ""; \
-		echo "======== CHECK FAILED — Makefile differs from Makefile.template ========"; \
-		echo ""; \
-		diff Makefile Makefile.template; \
+		echo "  [FAIL] Makefile differs from Makefile.template — run: bash scripts/post_cubemx.sh"; \
+		FAIL=1; \
+	fi; \
+	if grep -qE 'GPIO_MODE_IT_RISING[^_]|GPIO_MODE_IT_FALLING[^_]' Core/Src/main.c; then \
+		echo "  [FAIL] GPIO_MODE_IT_RISING/FALLING not patched in main.c — run: bash scripts/post_cubemx.sh"; \
+		FAIL=1; \
+	else \
+		echo "  [OK]  GPIO_MODE_IT_RISING_FALLING patch applied"; \
+	fi; \
+	if [ $$FAIL -eq 0 ]; then \
+		echo ""; echo "======== CHECK OK ========"; echo ""; \
+	else \
+		echo ""; echo "======== CHECK FAILED — see above ========"; echo ""; exit 1; \
 	fi
   
 #######################################
