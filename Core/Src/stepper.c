@@ -260,6 +260,10 @@ static void StartMove(int32_t steps)
         minPeriod  = (uint32_t)((float)STEPPER_TIM_CLOCK / v_peak_sps);
         decelSteps = (int32_t)((v_peak_sps * v_peak_sps - v_min_sps * v_min_sps)
                                 / (2.0f * decel_sps2));
+        /* clamp: analytic formula can exceed table size by 1-2 due to float
+           truncation in BuildRampTables; if decelSteps > decelSize the table
+           runs out before reaching min speed → abrupt jump to maxPeriod */
+        if (decelSteps > decelSize) decelSteps = decelSize;
     }
 
     stepperState = STEPPER_ACCEL;

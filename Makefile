@@ -281,6 +281,10 @@ qtc:
 post_cubemx:
 	bash scripts/post_cubemx.sh
 
+.PHONY: size
+size: $(BUILD_DIR)/$(TARGET).elf
+	$(SZ) --format=berkeley $<
+
 #######################################
 # check vs template
 #######################################
