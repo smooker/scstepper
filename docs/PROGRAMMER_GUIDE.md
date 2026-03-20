@@ -214,7 +214,55 @@ record. When making a motion change, run a new capture and commit it.
 
 ---
 
-## 9. Firmware architecture
+## 9. Boot sequence
+
+```
+[power on / reset]
+    │
+    ├─ CRC32 check — STM32 CRC peripheral over [0x08000000..0x0803FF80)
+    │     morse "E" (dit) = OK
+    │     morse "SOS" + halt = flash corrupt
+    │
+    ├─ morse "V"  — boot started
+    │
+    ├─ USB enumeration (1200ms wait)
+    │
+    ├─ Stepper_LoadParams() — read EEPROM
+    │     eepromStatus=0: "EEPROM OK — params loaded from flash"
+    │     eepromStatus=2: "EEPROM has data but magic absent — type 'save' to confirm"
+    │     eepromStatus=1: *** BLOCKING PROMPT *** "Init with defaults? [y/n]"
+    │                      y → Stepper_InitDefaults() + beep
+    │                      n → defaults in RAM only
+    │
+    ├─ banner + params dump
+    │
+    ├─ morse "G"  — ready
+    │
+    └─ morse "Z"  — main loop starts (non-blocking state machine)
+
+buttons enabled
+XXXX.XX >
+```
+
+**Normal boot output (terminal):**
+```
+params ok
+  stepper init ok
+
+===============================================
+  stepper_sc  <hash>  <date>
+  STM32F411CEU6 @ 96 MHz
+  type 'help' for commands
+===============================================
+  <params dump>
+  EEPROM OK — params loaded from flash        ← or orphaned/blank message
+XXXX.XX >
+buttons enabled
+```
+
+---
+
+## 10. Firmware architecture
 
 ### Two files, clear split
 - `stepper.c` — physics: ramp table generation, ISR (TIM2), EEPROM R/W, parameter validation
@@ -261,7 +309,7 @@ Beeps on: jog press, step press, endstop hit, home complete,
 
 ---
 
-## 10. Lessons learned (from AUDIT.md)
+## 11. Lessons learned (from AUDIT.md)
 
 ### GDB scripts are not compiled
 Removing a C variable from firmware does not break `.gdb`/`.py` files —
@@ -298,7 +346,7 @@ Edit `Makefile.template`, not `Makefile`. CubeMX will overwrite `Makefile`.
 
 ---
 
-## 11. TODO (open items)
+## 12. TODO (open items)
 
 See `docs/TODO.md` for full details:
 - Unified ramp table (index 0 = center, symmetric accel/decel)
