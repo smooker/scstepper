@@ -13,13 +13,15 @@ echo "--- [1/3] Restore Makefile from Makefile.template ---"
 cp -v Makefile.template Makefile
 echo ""
 
-# ── 2. Fix GPIO mode: RISING → RISING_FALLING in MX_GPIO_Init ───────────────
-echo "--- [2/3] Fix GPIO_MODE_IT_RISING → GPIO_MODE_IT_RISING_FALLING ---"
+# ── 2. Fix GPIO mode: RISING / FALLING → RISING_FALLING in MX_GPIO_Init ─────
+echo "--- [2/3] Fix GPIO_MODE_IT_RISING/FALLING → GPIO_MODE_IT_RISING_FALLING ---"
 FILE=Core/Src/main.c
-BEFORE=$(grep -c "GPIO_MODE_IT_RISING[^_]" "$FILE" || true)
+BEFORE_R=$(grep -c "GPIO_MODE_IT_RISING[^_]" "$FILE" || true)
+BEFORE_F=$(grep -c "GPIO_MODE_IT_FALLING[^_]" "$FILE" || true)
 sed -i 's/GPIO_MODE_IT_RISING\b/GPIO_MODE_IT_RISING_FALLING/g' "$FILE"
+sed -i 's/GPIO_MODE_IT_FALLING\b/GPIO_MODE_IT_RISING_FALLING/g' "$FILE"
 AFTER=$(grep -c "GPIO_MODE_IT_RISING_FALLING" "$FILE" || true)
-echo "  $FILE: fixed $BEFORE occurrences → $AFTER GPIO_MODE_IT_RISING_FALLING"
+echo "  $FILE: fixed RISING=$BEFORE_R + FALLING=$BEFORE_F → $AFTER GPIO_MODE_IT_RISING_FALLING"
 echo ""
 
 # ── 3. Verify Makefile matches template ──────────────────────────────────────
