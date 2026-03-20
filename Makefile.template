@@ -223,13 +223,6 @@ clean:
 	-rm -fR $(BUILD_DIR)
 
 #######################################
-# Qt Creator / clangd project files
-#######################################
-.PHONY: qtc
-qtc:
-	python3 scripts/gen_qtc.py
-
-#######################################
 # check vs template
 #######################################
 check:

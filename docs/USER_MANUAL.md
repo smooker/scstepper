@@ -102,7 +102,9 @@ to avoid EMI false triggers.
 
 ## Physical Buttons
 
-Active low (pulled up internally, press connects to GND).
+Active low (press connects to GND). External 10 kΩ pull-up resistors to 3.3 V on PCB.
+Internal MCU pull-ups also enabled (GPIO_PULLUP) as a secondary safety measure — harmless in parallel with external resistors.
+All 6 input pins (buttons + endstops) configured for **RISING + FALLING** edges in CubeMX.
 Buttons start **disabled** at boot — enabled after input self-test passes (morse OK).
 
 | Button | Pin | Short Press | Long Hold (>300ms) |
@@ -138,7 +140,7 @@ Note: homing progress messages (`home: approach...`, `home: ES_L confirmed...` e
 | ES_L | PA3 | Immediate deceleration stop. Falling edge (active low) |
 | ES_R | PA4 | Immediate deceleration stop. Falling edge (active low) |
 
-Endstops have a **30ms edge lockout** in normal mode — `Stepper_Stop()` fires on the first edge, repeated edges within 30ms are ignored (EMI / vibration protection).
+Endstops have a **30ms edge lockout** in normal mode — `Stepper_Stop()` fires on the falling edge (active low), repeated edges within 30ms are ignored (EMI / vibration protection).
 In `diag_inputs` mode, endstops have 30ms debounce and only print — no stop.
 During `home`, EXTI endstops are disabled — GPIO polling with debounce is used instead.
 

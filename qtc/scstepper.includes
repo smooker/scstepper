@@ -1,0 +1,9 @@
+/home/claude-agent/work/scstepper/Core/Inc
+/home/claude-agent/work/scstepper/Drivers/CMSIS/Device/ST/STM32F4xx/Include
+/home/claude-agent/work/scstepper/Drivers/CMSIS/Include
+/home/claude-agent/work/scstepper/Drivers/STM32F4xx_HAL_Driver/Inc
+/home/claude-agent/work/scstepper/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy
+/home/claude-agent/work/scstepper/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc
+/home/claude-agent/work/scstepper/Middlewares/ST/STM32_USB_Device_Library/Core/Inc
+/home/claude-agent/work/scstepper/USB_DEVICE/App
+/home/claude-agent/work/scstepper/USB_DEVICE/Target

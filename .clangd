@@ -1,0 +1,17 @@
+# .clangd — ARM bare-metal flag fixups for clangd
+# Removes GCC-specific flags that clang/clangd does not support.
+CompileFlags:
+  Add:
+    - --target=arm-none-eabi
+  Remove:
+    - -mcpu=*
+    - -mthumb
+    - -mfpu=*
+    - -mfloat-abi=*
+    - -specs=*
+    - -Wa,-a,-ad,-alms=*
+    - -MMD
+    - -MP
+    - -MF*
+    - -dM
+    - -Werror
