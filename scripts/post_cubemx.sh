@@ -8,9 +8,21 @@ echo ""
 echo "=== post_cubemx ==="
 echo ""
 
-# ── 1. Restore Makefile from template ────────────────────────────────────────
-echo "--- [1/3] Restore Makefile from Makefile.template ---"
-cp -v Makefile.template Makefile
+# ── 1. Check Makefile vs template ────────────────────────────────────────────
+echo "--- [1/3] Makefile vs Makefile.template ---"
+if diff -q Makefile Makefile.template > /dev/null 2>&1; then
+    echo "  Makefile matches template — no change needed"
+else
+    echo ""
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    echo "!!  MAKEFILE DIFFERS FROM TEMPLATE — CubeMX overwrote it            !!"
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    diff Makefile Makefile.template || true
+    echo ""
+    echo "  Restoring Makefile from template..."
+    cp Makefile.template Makefile
+    echo "  Done."
+fi
 echo ""
 
 # ── 2. Fix GPIO mode: RISING / FALLING → RISING_FALLING in MX_GPIO_Init ─────
