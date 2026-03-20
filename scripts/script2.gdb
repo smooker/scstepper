@@ -10,8 +10,7 @@ set remote exec-file ./build/scstepper.elf
 end
 
 define fl
-file ./build/scstepper.elf
-set remote exec-file ./build/scstepper.elf
+fwc
 load ./build/scstepper.hex
 fwcheck
 end
