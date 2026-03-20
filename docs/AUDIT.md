@@ -70,13 +70,16 @@ for a full 32-bit TIM2 period (~44 seconds).
 
 ## Safety Concerns (CNC Motor Control)
 
-### 9. `motorola` diagnostic mode — infinite loop, no endstop check
+### 9. `motorola` diagnostic mode — infinite loop, no endstop check — **BY DESIGN**
 
-The `motorola` command enters `while(1)` doing 16k pulses each direction at 1kHz.
-No escape except reset. No endstop checking. Can cause physical damage if motor
-is near a limit.
+The `motorola` command (password-protected via `diag_outputs`) enters `while(1)`
+doing 16k pulses each direction at 1kHz via direct TIM2 PWM — completely bypassing
+the stepper state machine, EXTI, and all safety logic.
 
-**Fix:** Add endstop checks inside the loop, or at least a step count limit.
+**This is intentional.** It is a lowest-level hardware diagnostic tool for use with
+an oscilloscope to verify PULSE/DIR signal integrity and check that endstop EXTI
+interrupts fire correctly — before trusting any firmware logic. Requires hardware
+reset to exit. Only used during bring-up/debugging with the developer present.
 
 ### 10. RunHome uses hardcoded 9999mm (main.c:1456, 1486)
 
