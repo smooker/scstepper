@@ -90,49 +90,54 @@ static int32_t MmToSteps(float mm)
 
 /* ---- EEPROM ------------------------------------------------------- */
 
-/* Returns 1 if EEPROM was blank (magic absent), 0 if already initialized.
-   In both cases params are loaded (defaults used for missing keys). */
+/* Returns EEPROM init status:
+ *   0  — magic present, all params loaded from flash (normal boot)
+ *   1  — truly blank: no data found at all → offer init with defaults
+ *   2  — has data but magic absent (SaveParams never called) → motor OK, just type 'save'
+ * In all cases params are loaded (defaults used for missing keys). */
 int Stepper_LoadParams(void)
 {
     uint32_t val;
+    int any_found = 0;
 
-    if (EEPROM_Read(EE_ADDR_MMPSMAX,  &val) == EEPROM_OK) motorParams.mmpsmax.u  = val;
+    if (EEPROM_Read(EE_ADDR_MMPSMAX,  &val) == EEPROM_OK) { motorParams.mmpsmax.u  = val; any_found = 1; }
     else motorParams.mmpsmax.f  = DEFAULT_MMPSMAX;
 
-    if (EEPROM_Read(EE_ADDR_MMPSMIN,  &val) == EEPROM_OK) motorParams.mmpsmin.u  = val;
+    if (EEPROM_Read(EE_ADDR_MMPSMIN,  &val) == EEPROM_OK) { motorParams.mmpsmin.u  = val; any_found = 1; }
     else motorParams.mmpsmin.f  = DEFAULT_MMPSMIN;
 
-    if (EEPROM_Read(EE_ADDR_DVDTACC,  &val) == EEPROM_OK) motorParams.dvdtacc.u  = val;
+    if (EEPROM_Read(EE_ADDR_DVDTACC,  &val) == EEPROM_OK) { motorParams.dvdtacc.u  = val; any_found = 1; }
     else motorParams.dvdtacc.f  = DEFAULT_DVDTACC;
 
-    if (EEPROM_Read(EE_ADDR_DVDTDECC, &val) == EEPROM_OK) motorParams.dvdtdecc.u = val;
+    if (EEPROM_Read(EE_ADDR_DVDTDECC, &val) == EEPROM_OK) { motorParams.dvdtdecc.u = val; any_found = 1; }
     else motorParams.dvdtdecc.f = DEFAULT_DVDTDECC;
 
-    if (EEPROM_Read(EE_ADDR_JOGMM,    &val) == EEPROM_OK) motorParams.jogmm.u    = val;
+    if (EEPROM_Read(EE_ADDR_JOGMM,    &val) == EEPROM_OK) { motorParams.jogmm.u    = val; any_found = 1; }
     else motorParams.jogmm.f    = DEFAULT_JOGMM;
 
-    if (EEPROM_Read(EE_ADDR_STEPMM,   &val) == EEPROM_OK) motorParams.stepmm.u   = val;
+    if (EEPROM_Read(EE_ADDR_STEPMM,   &val) == EEPROM_OK) { motorParams.stepmm.u   = val; any_found = 1; }
     else motorParams.stepmm.f   = DEFAULT_STEPMM;
 
-    if (EEPROM_Read(EE_ADDR_SPMM,     &val) == EEPROM_OK) motorParams.spmm.u     = val;
+    if (EEPROM_Read(EE_ADDR_SPMM,     &val) == EEPROM_OK) { motorParams.spmm.u     = val; any_found = 1; }
     else motorParams.spmm.u     = DEFAULT_SPMM;
 
-    if (EEPROM_Read(EE_ADDR_DIRINV,   &val) == EEPROM_OK) motorParams.dirinv.u   = val;
+    if (EEPROM_Read(EE_ADDR_DIRINV,   &val) == EEPROM_OK) { motorParams.dirinv.u   = val; any_found = 1; }
     else motorParams.dirinv.u   = 0;
 
-    if (EEPROM_Read(EE_ADDR_HOMESPD,  &val) == EEPROM_OK) motorParams.homespd.u  = val;
+    if (EEPROM_Read(EE_ADDR_HOMESPD,  &val) == EEPROM_OK) { motorParams.homespd.u  = val; any_found = 1; }
     else motorParams.homespd.f  = DEFAULT_HOMESPD;
 
-    if (EEPROM_Read(EE_ADDR_HOMEOFF,  &val) == EEPROM_OK) motorParams.homeoff.u  = val;
+    if (EEPROM_Read(EE_ADDR_HOMEOFF,  &val) == EEPROM_OK) { motorParams.homeoff.u  = val; any_found = 1; }
     else motorParams.homeoff.u  = DEFAULT_HOMEOFF;
 
-    if (EEPROM_Read(EE_ADDR_DEBUG,    &val) == EEPROM_OK) motorParams.debug.u    = val;
+    if (EEPROM_Read(EE_ADDR_DEBUG,    &val) == EEPROM_OK) { motorParams.debug.u    = val; any_found = 1; }
     else motorParams.debug.u    = DEFAULT_DEBUG;
 
-    /* blank EEPROM = magic key absent */
-    int blank = (EEPROM_Read(EE_ADDR_MAGIC, &val) != EEPROM_OK ||
-                 val != EEPROM_MAGIC_VALUE);
-    return blank;
+    int has_magic = (EEPROM_Read(EE_ADDR_MAGIC, &val) == EEPROM_OK &&
+                     val == EEPROM_MAGIC_VALUE);
+    if (has_magic)   return 0;   /* fully saved */
+    if (any_found)   return 2;   /* orphaned — has data, no magic */
+    return 1;                    /* truly blank */
 }
 
 int Stepper_SaveParams(void)

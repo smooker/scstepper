@@ -134,26 +134,19 @@ end
 python
 
 class EeCheckCmd(gdb.Command):
-    """Check EEPROM emulation pages directly in flash (no firmware needed).
+    """Check EEPROM emulation region.
 
 Usage: eecheck
-Reads STM32F411 Sector 6/7 page status and scans for magic key.
-Safe to run before 'fl' to confirm params are preserved.
-  VALID   = 0xAAAAAAAA (active page)
-  ERASED  = 0xFFFFFFFF (blank)
-  RECEIVE = 0xEEEEEEEE (swap in progress)
-Magic key 12 = 0x5AFEC0DE confirms SaveParams was called."""
+Shows Sector 6/7 page status (raw flash — works before firmware runs).
+If firmware is loaded, reads eepromStatus variable directly.
+  eepromStatus 0 = OK    1 = blank    2 = orphaned (data, no magic)
+Safe to run before 'fl' to confirm params survive the flash cycle."""
 
-    PAGE0         = 0x08040000
-    PAGE1         = 0x08060000
-    RECORDS_START = 8
-    RECORD_SIZE   = 8
-    MAX_RECORDS   = (128 * 1024 - 8) // 8
+    PAGE0          = 0x08040000
+    PAGE1          = 0x08060000
     STATUS_VALID   = 0xAAAAAAAA
     STATUS_ERASED  = 0xFFFFFFFF
     STATUS_RECEIVE = 0xEEEEEEEE
-    EE_ADDR_MAGIC  = 12
-    MAGIC_VALUE    = 0x5AFEC0DE
 
     def __init__(self):
         super().__init__('eecheck', gdb.COMMAND_USER)
@@ -179,42 +172,27 @@ Magic key 12 = 0x5AFEC0DE confirms SaveParams was called."""
         print("PAGE0  0x{:08X}: {}".format(self.PAGE0, self._status_str(p0)))
         print("PAGE1  0x{:08X}: {}".format(self.PAGE1, self._status_str(p1)))
 
-        active = None
-        if p0 == self.STATUS_VALID:
-            active = self.PAGE0
-        elif p1 == self.STATUS_VALID:
-            active = self.PAGE1
-
-        if active is None:
+        if p0 != self.STATUS_VALID and p1 != self.STATUS_VALID:
             print("\033[1;31m=== EECHECK: no valid page — EEPROM blank or corrupt ===\033[0m")
             return
 
-        # scan records; last occurrence of a key wins (newest write)
-        magic_val = None
-        record_count = 0
+        # Try to read eepromStatus from firmware (requires ELF loaded)
         try:
-            for i in range(self.MAX_RECORDS):
-                addr = active + self.RECORDS_START + i * self.RECORD_SIZE
-                hdr  = self._read32(inf, addr)
-                if hdr == 0xFFFFFFFF:   # empty slot — end of written area
-                    break
-                vaddr = hdr >> 16
-                data  = self._read32(inf, addr + 4)
-                if vaddr == self.EE_ADDR_MAGIC:
-                    magic_val = data
-                record_count += 1
-        except Exception as e:
-            print("eecheck: scan error at record {}: {}".format(i, e))
+            status = int(gdb.parse_and_eval('eepromStatus'))
+        except Exception:
+            print("  (eepromStatus not available — load ELF with 'ld' for firmware view)")
             return
 
-        print("  Active page: 0x{:08X},  {} record(s) written".format(active, record_count))
-
-        if magic_val == self.MAGIC_VALUE:
-            print("\033[1;32m=== EECHECK OK — magic 0x{:08X} present, params were saved ===\033[0m".format(magic_val))
-        elif magic_val is not None:
-            print("\033[1;31m=== EECHECK WARN — magic key found but wrong value: 0x{:08X} (expected 0x{:08X}) ===\033[0m".format(magic_val, self.MAGIC_VALUE))
+        if status == -1:
+            print("  eepromStatus = -1 (firmware not yet reached Stepper_LoadParams)")
+        elif status == 0:
+            print("\033[1;32m=== EECHECK OK — eepromStatus=0, magic present, params saved ===\033[0m")
+        elif status == 2:
+            print("\033[1;33m=== EECHECK: eepromStatus=2 — data present, magic absent — type 'save' ===\033[0m")
+        elif status == 1:
+            print("\033[1;31m=== EECHECK: eepromStatus=1 — truly blank, no data ===\033[0m")
         else:
-            print("\033[1;33m=== EECHECK: magic absent — EEPROM init never saved (params are defaults) ===\033[0m")
+            print("  eepromStatus = {} (unexpected)".format(status))
 
 EeCheckCmd()
 

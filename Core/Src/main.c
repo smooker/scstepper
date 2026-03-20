@@ -93,6 +93,10 @@ extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern volatile int32_t  posSteps;
 extern volatile uint8_t  posHomed;
 
+/* EEPROM init status — set once by Stepper_LoadParams() at boot.
+ * 0 = OK (magic present)   1 = blank (no data)   2 = orphaned (data, no magic) */
+int eepromStatus = -1;
+
 volatile uint8_t diagMode = 0;
 volatile uint8_t buttonsEn = 0;   /* 0 = ignore button EXTI events — starts OFF, enabled after boot OK */
 volatile uint8_t endstopsEn = 1;  /* 0 = ignore endstop EXTI events */
@@ -823,7 +827,7 @@ int main(void)
   lineLen = 0;
   lineBuf[0] = '\0';
 
-  int eeprom_blank = Stepper_LoadParams();
+  eepromStatus = Stepper_LoadParams();
   Stepper_ValidateParams();
   Stepper_Init(&htim2);
 
@@ -838,9 +842,12 @@ int main(void)
 
   Stepper_DumpParams();
 
-  if (!eeprom_blank) {
+  if (eepromStatus == 0) {
       printf("  EEPROM OK — params loaded from flash\r\n");
+  } else if (eepromStatus == 2) {
+      printf("  EEPROM has data but magic absent — type 'save' to confirm\r\n");
   } else {
+      /* eepromStatus == 1: truly blank — block until user decides */
       printf("\r\n*** EEPROM blank — motor DISABLED until answered ***\r\n");
       printf("*** Init with defaults? [y/n]                    ***\r\n");
       char ans = 0;
