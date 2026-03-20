@@ -799,18 +799,19 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* ── Firmware CRC self-check — first thing, before any peripherals ──────
-   * STM32 CRC32 peripheral over [0x08000000 .. 0x0803FFFC) = 65535 words.
-   * Stored word at 0x0803FFFC patched by scripts/crc_patch.py after build.
-   * "." in morse = OK.  "SOS" + halt = flash corruption detected.        */
+   * Block at 0x0803FF80: 31 x uint32 label + 1 x uint32 CRC (128 bytes).
+   * CRC covers [0x08000000 .. 0x0803FF80) = 65504 words (program + 0xFF pad).
+   * "." in morse = OK.  "SOS" + halt = flash corruption detected.
+   * Label and CRC patched by scripts/crc_patch.py after every build.      */
   {
-      extern const uint32_t __fw_crc;
+      extern const struct { char label[124]; uint32_t crc; } __fw_info;
       __HAL_RCC_CRC_CLK_ENABLE();
       CRC->CR = CRC_CR_RESET;
       const uint32_t *p   = (const uint32_t *)0x08000000U;
-      const uint32_t *end = &__fw_crc;
+      const uint32_t *end = (const uint32_t *)&__fw_info;   /* 0x0803FF80 */
       while (p < end) { CRC->DR = *p++; }
       uint32_t computed = CRC->DR;
-      if (computed == __fw_crc) {
+      if (computed == __fw_info.crc) {
           morse(".");          /* single beep = OK */
       } else {
           while (1) { morse("SOS"); HAL_Delay(2000); }   /* halt */

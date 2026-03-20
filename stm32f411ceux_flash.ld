@@ -62,8 +62,8 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 MEMORY
 {
   RAM    (xrw) : ORIGIN = 0x20000000, LENGTH = 128K
-  FLASH  (rx)  : ORIGIN = 0x08000000, LENGTH = 256K - 4  /* Sectors 0-5, minus CRC word */
-  FW_CRC (rx)  : ORIGIN = 0x0803FFFC, LENGTH = 4         /* last word before EEPROM Sector 6 */
+  FLASH  (rx)  : ORIGIN = 0x08000000, LENGTH = 256K - 128  /* Sectors 0-5, minus label+CRC block */
+  FW_CRC (rx)  : ORIGIN = 0x0803FF80, LENGTH = 128         /* 31 label words + CRC word (32 x uint32) */
 }
 
 /* Define output sections */

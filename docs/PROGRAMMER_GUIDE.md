@@ -63,6 +63,27 @@ make check        # verify repo integrity (see §4)
 
 Binary is at `-O0` (debug default). For size optimization see `docs/TODO.md`.
 
+### CRC patching (automatic)
+
+`crc_patch.py` runs automatically as part of `make`. After `objcopy` generates
+the BIN, it computes STM32 CRC32 over the entire 256KB program area
+(Sectors 0-5, [0x08000000..0x0803FFFC)) and patches the last 4 bytes
+(0x0803FFFC — just before the EEPROM region). BIN and HEX are updated in-place.
+
+```
+  CRC32: 0x810F7A01  (was 0xDEADBEEF)  @ 0x0803FFFC
+```
+
+The firmware checks this CRC as **the very first action at boot** using the
+CRC32 hardware peripheral. Morse "." = OK. Morse "SOS" + halt = flash corrupt.
+
+**Flash layout:**
+```
+0x08000000  Sectors 0-5  256KB  program (firmware + 0xFF padding + CRC word)
+0x0803FFFC               4B     CRC32 word  ← .fw_crc section (FW_CRC region)
+0x08040000  Sectors 6-7  256KB  EEPROM emulation  ← never in HEX, not touched by fl
+```
+
 ---
 
 ## 4. make check — three invariants
