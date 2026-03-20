@@ -227,20 +227,23 @@ clean:
 #######################################
 # Developer environment install
 # Run once after clone (or after initcfg changes)
+# Override: make install UDEV_DIR=/path
 #######################################
+UDEV_DIR ?= /etc/udev/rules.d
+
 .PHONY: install
 install:
 	@echo ""
 	@echo "=== Installing developer environment ==="
 	@echo ""
-	@echo "--- [1/4] ~/.gdbinit (auto-load local .gdbinit) ---"
-	@cp -v initcfg/dot-gdbinit-for-home ~/.gdbinit
+	@echo "--- [1/4] $(HOME)/.gdbinit (auto-load local .gdbinit) ---"
+	@cp -v initcfg/dot-gdbinit-for-home $(HOME)/.gdbinit
 	@echo ""
 	@echo "--- [2/4] .gdbinit (GDB Dashboard, local project) ---"
 	@cp -v initcfg/gdbinit .gdbinit
 	@echo ""
-	@echo "--- [3/4] udev rules ---"
-	@cp -v scripts/99-steppersys.rules /etc/udev/rules.d/99-steppersys.rules
+	@echo "--- [3/4] udev rules -> $(UDEV_DIR) ---"
+	@cp -v scripts/99-steppersys.rules $(UDEV_DIR)/99-steppersys.rules
 	@udevadm control --reload-rules
 	@echo "udev rules reloaded"
 	@echo ""
