@@ -250,12 +250,29 @@ params ok
   stepper init ok
 
 ===============================================
-  stepper_sc  <hash>  <date>
+  stepper_sc  44b9a5e  2026-03-20_14:24
   STM32F411CEU6 @ 96 MHz
   type 'help' for commands
 ===============================================
-  <params dump>
-  EEPROM OK — params loaded from flash        ← or orphaned/blank message
+
+-----------------------------------------------
+  mmpsmax........:   1.000 mm/s
+  mmpsmin........:   0.500 mm/s
+  dvdtacc........:  50.000 mm/s2
+  dvdtdecc.......: 100.000 mm/s2
+  jogmm..........:   0.200 mm
+  stepmm.........:   1.000 mm
+  spmm...........:     400 steps/mm
+  dirinv.........:       1 (inverted)
+  homespd........:   0.500 mm/s
+  homeoff........:      10 steps
+  debug..........: 0x0000
+-----------------------------------------------
+  pulse_ticks....: 5000
+  min_period.....: 240000 ticks (1.0 mm/s)
+  max_period.....: 480000 ticks (0.5 mm/s)
+-----------------------------------------------
+  EEPROM OK — params loaded from flash
 XXXX.XX >
 buttons enabled
 ```
