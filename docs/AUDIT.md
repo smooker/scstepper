@@ -4,27 +4,13 @@ Audit of stepper_sc firmware on branch `routing`, tag `v0.4-buttons`.
 
 ## Bugs
 
-### 1. RX/TX buffer name swap (main.c:113-121)
+### 1. RX/TX buffer name swap — **FIXED**
 
-```c
-#define RX_BUF_SIZE  512
-static uint8_t UserTxBufferFS[RX_BUF_SIZE];   // TX sized by RX
+Renamed to `CDC_TX_BUF_SIZE` / `CDC_RX_BUF_SIZE`, each sizing the correct buffer.
 
-#define TX_BUF_SIZE  512
-static uint8_t UserRxBufferFS[TX_BUF_SIZE];   // RX sized by TX
-```
+### 2. CDC_RxRead uses APP_RX_DATA_SIZE instead of RX_BUF_SIZE — **FIXED**
 
-Both are 512 so no runtime effect, but dangerous if sizes ever diverge.
-
-### 2. CDC_RxRead uses APP_RX_DATA_SIZE instead of RX_BUF_SIZE (main.c:718)
-
-```c
-rxTail = (rxTail + 1) % APP_RX_DATA_SIZE;
-```
-
-But `MyCDC_Receive_FS` wraps with `RX_BUF_SIZE`. If they differ, ring buffer corruption.
-
-**Fix:** Use a single `#define CDC_RX_BUF_SIZE 512` everywhere.
+All RX ring buffer wrap operations now use `CDC_RX_BUF_SIZE` consistently.
 
 ### 3. evtFlags race condition — **FIXED**
 
@@ -53,26 +39,15 @@ priority 0. Same-priority ISRs cannot preempt each other on Cortex-M4 — this m
 `Stepper_Stop()` from EXTI ISR atomic with respect to TIM2 ISR, without needing
 `__disable_irq()` inside `Stepper_Stop()`.
 
-### 5. Error_Handler deadlock (main.c:1645-1653)
+### 5. Error_Handler deadlock — **FIXED**
 
-```c
-__disable_irq();
-while (1) {
-    HAL_GPIO_WritePin(...);
-    HAL_Delay(50);          // needs SysTick — but IRQs are disabled!
-```
+`Error_Handler` now calls `SafeState_And_Blink()` which uses a NOP busy-loop
+(no `HAL_Delay`), Hi-Z all functional GPIO, and fast LED blink — IRQ-safe.
 
-`HAL_Delay` hangs forever. LED stays in one state instead of blinking.
+### 6. decelSteps mismatch with table indices — **FIXED**
 
-**Fix:** Use a NOP busy-loop instead of `HAL_Delay`, or re-enable SysTick specifically.
-
-### 6. decelSteps mismatch with table indices (stepper.c:236-263)
-
-`BuildRampTables()` sets `decelSteps` from table sizes, then the analytic calculation
-overwrites it. If analytic `decelSteps` exceeds `decelSize`, ISR enters DECEL too late
-and may under-decelerate (abrupt stop).
-
-**Fix:** Use `min(analyticDecelSteps, decelSize)` or ensure consistency.
+Analytic `decelSteps` clamped to `decelSize` after recalculation:
+`if (decelSteps > decelSize) decelSteps = decelSize;`
 
 ### 7. dashTime macro missing parentheses (defines.h)
 
