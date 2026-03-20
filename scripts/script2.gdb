@@ -24,6 +24,9 @@ target extended-remote /dev/ttyBmpGdb
 monitor swdp_scan
 attach 1
 monitor traceswo
+end
+
+define fwc
 ld
 fwcheck
 end
