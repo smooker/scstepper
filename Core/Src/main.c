@@ -839,18 +839,24 @@ int main(void)
   Stepper_DumpParams();
 
   if (eeprom_blank) {
-      printf("\r\n*** EEPROM blank — init with defaults? [y/N] (3s) ***\r\n");
-      uint32_t t0 = HAL_GetTick();
+      printf("\r\n*** EEPROM blank — motor DISABLED until answered ***\r\n");
+      printf("*** Init with defaults? [y/n]                    ***\r\n");
       char ans = 0;
-      while (HAL_GetTick() - t0 < 3000) {
+      uint32_t dotTick = HAL_GetTick();
+      while (1) {
           if (rxHead != rxTail) {
               ans = (char)UserRxBufferFS[rxTail];
               rxTail = (rxTail + 1) % CDC_RX_BUF_SIZE;
-              break;
+              if (ans == 'y' || ans == 'Y' || ans == 'n' || ans == 'N') break;
+          }
+          if (HAL_GetTick() - dotTick >= 1000) {
+              printf("  waiting for [y/n]...\r\n");
+              dotTick = HAL_GetTick();
           }
       }
       if (ans == 'y' || ans == 'Y') {
           Stepper_InitDefaults();
+          buzzRequest = 1;
       } else {
           printf("skipped — defaults in RAM only, not saved\r\n");
       }
