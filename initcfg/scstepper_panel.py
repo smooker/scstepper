@@ -24,11 +24,10 @@ class StepperPanel(Dashboard.Module):
         state = v('stepperState')
         pos   = vi('posSteps')
         homed = vi('posHomed')
-        esblk = vi('esBlocked')
         rng   = vf('rangeUsableMm')
         rows.append(
-            'motor  {:30s} pos={:7d}steps  homed={}  esBlk={:+d}  range={:.2f}mm'
-            .format(state, pos, homed, esblk, rng))
+            'motor  {:30s} pos={:7d}steps  homed={}  range={:.2f}mm'
+            .format(state, pos, homed, rng))
 
         # ── Inputs ─────────────────────────────────────────────────────────
         btns = vi('buttonsEn')

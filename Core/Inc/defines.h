@@ -42,6 +42,10 @@
 #define PIN_ER_RESET    (HAL_GPIO_ReadPin(ES_R_GPIO_Port, ES_R_Pin) == GPIO_PIN_RESET)
 #define PIN_ER_SET      (HAL_GPIO_ReadPin(ES_R_GPIO_Port, ES_R_Pin) == GPIO_PIN_SET)
 
+/* Endstop active state (active LOW) — single source of truth */
+#define ES_L_ACTIVE()   PIN_EL_RESET   /* ES_L triggered = block CCW */
+#define ES_R_ACTIVE()   PIN_ER_RESET   /* ES_R triggered = block CW  */
+
 //SEMAPHORES
 #define SEM_EL          ((semaphore & (1 << EL)) > 0)
 #define SEM_ER          ((semaphore & (1 << ER)) > 0)
