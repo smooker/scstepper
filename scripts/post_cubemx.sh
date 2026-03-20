@@ -33,7 +33,15 @@ BEFORE_F=$(grep -c "GPIO_MODE_IT_FALLING[^_]" "$FILE" || true)
 sed -i 's/GPIO_MODE_IT_RISING\b/GPIO_MODE_IT_RISING_FALLING/g' "$FILE"
 sed -i 's/GPIO_MODE_IT_FALLING\b/GPIO_MODE_IT_RISING_FALLING/g' "$FILE"
 AFTER=$(grep -c "GPIO_MODE_IT_RISING_FALLING" "$FILE" || true)
-echo "  $FILE: fixed RISING=$BEFORE_R + FALLING=$BEFORE_F → $AFTER GPIO_MODE_IT_RISING_FALLING"
+if [ "$BEFORE_R" -gt 0 ] || [ "$BEFORE_F" -gt 0 ]; then
+    echo ""
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    echo "!!  GPIO_MODE_IT patch applied — CubeMX had reset interrupt edges   !!"
+    echo "!!  RISING=$BEFORE_R + FALLING=$BEFORE_F → $AFTER GPIO_MODE_IT_RISING_FALLING          !!"
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+else
+    echo "  $FILE: already correct ($AFTER GPIO_MODE_IT_RISING_FALLING) — no change needed"
+fi
 echo ""
 
 # ── 3. Verify Makefile matches template ──────────────────────────────────────
