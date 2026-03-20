@@ -326,7 +326,29 @@ Beeps on: jog press, step press, endstop hit, home complete,
 
 ---
 
-## 11. Lessons learned (from AUDIT.md)
+## 11. Known bugs
+
+### DEBOUNCE НЕ РАБОТИ — release path няма guard (jog и step бутони)
+
+`lastTick_jogL` (и `jogR`, `stepL`, `stepR`) се сетва **без проверка** при release:
+
+```c
+if (snapA & BUTT_JOGL_Pin) {   // release
+    lastTick_jogL = now;        // ← UNCONDITIONAL — bounce fires this again
+    evtFlags |= EVT_JOGL_UP;   // ← duplicate UP events on bouncy release
+}
+```
+
+Последствия:
+1. Bounce при release → множество `EVT_JOGL_UP` → main loop обработва повече от едно release
+2. Bounce при release → нулира `lastTick_jogL` → press debounce timer reset → блокира легитимно бързо повторно натискане за `DEBOUNCE_REL_MS` (50ms)
+
+**Fix:** добави `now - lastTick_jogL >= DEBOUNCE_REL_MS` guard и за release path — същото като press.
+Засяга: `BUTT_JOGL_Pin`, `BUTT_JOGR_Pin`, `BUTT_STEPL_Pin`, `BUTT_STEPR_Pin`.
+
+---
+
+## 12. Lessons learned (from AUDIT.md)
 
 ### GDB scripts are not compiled
 Removing a C variable from firmware does not break `.gdb`/`.py` files —
@@ -363,7 +385,7 @@ Edit `Makefile.template`, not `Makefile`. CubeMX will overwrite `Makefile`.
 
 ---
 
-## 12. TODO (open items)
+## 13. TODO (open items)
 
 See `docs/TODO.md` for full details:
 - Unified ramp table (index 0 = center, symmetric accel/decel)

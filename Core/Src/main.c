@@ -1307,6 +1307,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         break;
 
     /* ---- Jog buttons: press debounced, release instant ---- */
+    /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     * BUG: RELEASE HAS NO DEBOUNCE GUARD.
+     * lastTick_jogL is set unconditionally on release → bounce on release
+     * fires multiple EVT_JOGL_UP events AND resets the press debounce timer
+     * (blocking legitimate quick re-press for DEBOUNCE_REL_MS).
+     * Fix: apply same DEBOUNCE_REL_MS guard on release path.
+     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
     case BUTT_JOGL_Pin:
         if (!buttonsEn) break;
         if (snapA & BUTT_JOGL_Pin) {
