@@ -73,8 +73,8 @@ def main():
 
     # Build label: "SMOOKER AND CLAUDE YYYY-MM-DD HH:MM"
     now = datetime.now()
-    label_str = "SMOOKER AND CLAUDE {}-{:02d}-{:02d} {:02d}:{:02d}".format(
-        now.year, now.month, now.day, now.hour, now.minute)
+    label_str = "SMOOKER AND CLAUDE {}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
+        now.year, now.month, now.day, now.hour, now.minute, now.second)
     label_bytes = label_str.encode('ascii')[:LABEL_SIZE - 1]
     label_padded = label_bytes + b'\x00' * (LABEL_SIZE - len(label_bytes))
 

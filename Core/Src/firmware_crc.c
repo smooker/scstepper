@@ -22,6 +22,6 @@ struct fw_info {
 
 const struct fw_info __fw_info
     __attribute__((section(".fw_crc"), used)) = {
-    .label = "SMOOKER AND CLAUDE XXXX-XX-XX",  /* placeholder, patched */
+    .label = "SMOOKER AND CLAUDE XXXX-XX-XX XX:XX:XX",  /* placeholder, patched */
     .crc   = 0xDEADBEEF,
 };
