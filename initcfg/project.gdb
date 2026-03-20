@@ -130,15 +130,6 @@ FwCheckCmd()
 
 end
 
-# ─── pr: dump EEPROM flash pages raw ────────────────────────────────────────
-define pr
-  p/xz *(unsigned*) 0x08040000UL@32768
-  p/xz *(unsigned*) 0x08060000UL@32768
-end
-document pr
-Dump both EEPROM emulation flash pages (0x08040000 and 0x08060000), 128KB each.
-end
-
 # ─── mem_regions: STM32F411 memory map ───────────────────────────────────────
 define mem_regions
   printf "Flash  : 0x08000000 - 0x0807FFFF  512 KB\n"
