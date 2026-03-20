@@ -103,6 +103,10 @@ volatile uint32_t buzzTick = 0;
 volatile uint8_t  buzzActive = 0;
 volatile uint8_t  buzzRequest = 0;  /* set in ISR, handled in main loop */
 
+/* Input snapshots — written by EXTI ISR, read by main loop and ProcessLine */
+volatile uint32_t snapA = 0;  /* last GPIOA IDR snapshot */
+volatile uint32_t snapB = 0;  /* last GPIOB IDR snapshot */
+
 /* Non-blocking morse state machine */
 typedef enum { MRS_IDLE, MRS_TONE, MRS_INTER, MRS_LETTER, MRS_LETTERGAP } MorseState;
 static MorseState mrsState = MRS_IDLE;
@@ -727,24 +731,24 @@ void ProcessLine(void)
     }
     else if (sscanf((char *)lineBuf, "move %f", &fval) == 1)
     {
-        if      (!(snapA & ES_L_Pin) && fval < 0) printf("blocked: ES_L\r\n");
-        else if (!(snapA & ES_R_Pin) && fval > 0) printf("blocked: ES_R\r\n");
+        if      (!(snapA & ES_L_Pin) && fval < 0) { buzzRequest = 1; printf("blocked: ES_L\r\n"); }
+        else if (!(snapA & ES_R_Pin) && fval > 0) { buzzRequest = 1; printf("blocked: ES_R\r\n"); }
         else { cdcMoveActive = 1; Stepper_Move(fval); }
     }
     else if (sscanf((char *)lineBuf, "movel %f", &fval) == 1)
     {
-        if (!(snapA & ES_L_Pin)) printf("blocked: ES_L\r\n");
+        if (!(snapA & ES_L_Pin)) { buzzRequest = 1; printf("blocked: ES_L\r\n"); }
         else { cdcMoveActive = 1; Stepper_Move(-fval); }
     }
     else if (sscanf((char *)lineBuf, "mover %f", &fval) == 1)
     {
-        if (!(snapA & ES_R_Pin)) printf("blocked: ES_R\r\n");
+        if (!(snapA & ES_R_Pin)) { buzzRequest = 1; printf("blocked: ES_R\r\n"); }
         else { cdcMoveActive = 1; Stepper_Move(fval); }
     }
     else if (sscanf((char *)lineBuf, "steps %d", &ival) == 1)
     {
-        if      (!(snapA & ES_L_Pin) && ival < 0) printf("blocked: ES_L\r\n");
-        else if (!(snapA & ES_R_Pin) && ival > 0) printf("blocked: ES_R\r\n");
+        if      (!(snapA & ES_L_Pin) && ival < 0) { buzzRequest = 1; printf("blocked: ES_L\r\n"); }
+        else if (!(snapA & ES_R_Pin) && ival > 0) { buzzRequest = 1; printf("blocked: ES_R\r\n"); }
         else { cdcMoveActive = 1; Stepper_MoveSteps(ival); }
     }
     else if (sscanf((char *)lineBuf, "moveto %f", &fval) == 1)
@@ -754,9 +758,7 @@ void ProcessLine(void)
         } else if (rangeUsableMm <= 0.0f) {
             printf("\r\nmoveto: range not measured — run 'range' first\r\n");
         } else if (fval < 0.0f || fval > rangeUsableMm) {
-            HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
-            HAL_Delay(100);
-            HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_SET);
+            buzzRequest = 1;
             printf("\r\nmoveto: %.2f out of range [0.00 .. %.2f]\r\n", fval, rangeUsableMm);
         } else {
             float currentMm = (float)posSteps / (float)motorParams.spmm.u;
@@ -768,8 +770,8 @@ void ProcessLine(void)
     {
         if      (strcmp(cmd, "stop")   == 0) Stepper_Stop();
         else if (strcmp(cmd, "params") == 0) Stepper_DumpParams();
-        else if (strcmp(cmd, "save")       == 0) Stepper_SaveParams();
-        else if (strcmp(cmd, "initeeprom") == 0) Stepper_InitDefaults();
+        else if (strcmp(cmd, "save")       == 0) { if (Stepper_SaveParams()) buzzRequest = 1; }
+        else if (strcmp(cmd, "initeeprom") == 0) { Stepper_InitDefaults(); buzzRequest = 1; }
         else if (strcmp(cmd, "dump")   == 0) dumpVars();
         else if (strcmp(cmd, "cls")    == 0) { printf("\033[2J\033[H"); PrintPrompt(); }
         else if (strcmp(cmd, "uptime") == 0) printf("uptime: %lu ms\r\n", HAL_GetTick());
@@ -1354,14 +1356,7 @@ static volatile JogState jogStateR = JOG_IDLE;
 static volatile uint32_t jogPressTickL = 0;
 static volatile uint32_t jogPressTickR = 0;
 
-/*
- * Input snapshot — read once at ISR entry, use everywhere.
- * Avoids multiple GPIO reads, guarantees consistent pin state.
- * GPIOA: ES_L(3), ES_R(4), JOGL(6), JOGR(7)
- * GPIOB: STEPL(0), STEPR(1)
- */
-static volatile uint32_t snapA = 0;  /* last GPIOA IDR snapshot */
-static volatile uint32_t snapB = 0;  /* last GPIOB IDR snapshot */
+/* snapA/snapB declared at top of file — written here, read everywhere */
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
@@ -1679,8 +1674,8 @@ void ProcessEvents(void)
         else if (!(snapA & ES_L_Pin)) { /* ES_L active LOW = don't go left */ }
         else {
             jogStateL = JOG_PRESSED;
+            buzzRequest = 1;
             Stepper_Jog(-1.0f);   /* immediate short jog */
-            
         }
     }
     if (flags & EVT_JOGL_UP) {
@@ -1695,8 +1690,8 @@ void ProcessEvents(void)
         else if (!(snapA & ES_R_Pin)) { /* ES_R active LOW = don't go right */ }
         else {
             jogStateR = JOG_PRESSED;
+            buzzRequest = 1;
             Stepper_Jog(1.0f);    /* immediate short jog */
-            
         }
     }
     if (flags & EVT_JOGR_UP) {
@@ -1724,13 +1719,13 @@ void ProcessEvents(void)
         if (diagMode) { printf("BUTT_STEPL snapB=%08lx\r\n", snapB); PrintPrompt(); }
         else if (!(snapB & BUTT_STEPL_Pin)) { /* button released by now — ignore */ }
         else if (!(snapA & ES_L_Pin)) { /* ES_L active = blocked */ }
-        else { Stepper_Move(-motorParams.stepmm.f); }
+        else { buzzRequest = 1; Stepper_Move(-motorParams.stepmm.f); }
     }
     if (flags & EVT_STEPR) {
         if (diagMode) { printf("BUTT_STEPR snapB=%08lx\r\n", snapB); PrintPrompt(); }
         else if (!(snapB & BUTT_STEPR_Pin)) { /* button released by now — ignore */ }
         else if (!(snapA & ES_R_Pin)) { /* ES_R active = blocked */ }
-        else { Stepper_Move(motorParams.stepmm.f); }
+        else { buzzRequest = 1; Stepper_Move(motorParams.stepmm.f); }
     }
 
     /* ---- Home combo (ES_L hit + JOGL held + JOGR pressed) ---- */

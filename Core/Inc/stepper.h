@@ -89,11 +89,10 @@ void     Stepper_Stop(void);
 uint8_t  Stepper_IsBusy(void);
 void     Stepper_ISR(void);
 void     Stepper_DumpParams(void);
-void     Stepper_SaveParams(void);
-void     Stepper_LoadParams(void);
+int      Stepper_SaveParams(void);      /* returns 1=saved, 0=blocked (validation failed) */
+int      Stepper_LoadParams(void);      /* returns 1=EEPROM blank, 0=initialized   */
 void     Stepper_SetParam(const char *name, float value);
 int      Stepper_ValidateParams(void);  /* returns 1=ok, 0=warnings (save blocked) */
-int      Stepper_LoadParams(void);      /* returns 1=EEPROM blank, 0=initialized   */
 void     Stepper_InitDefaults(void);    /* write defaults to EEPROM (initeeprom)    */
 
 #endif /* STEPPER_H */

@@ -135,11 +135,11 @@ int Stepper_LoadParams(void)
     return blank;
 }
 
-void Stepper_SaveParams(void)
+int Stepper_SaveParams(void)
 {
     if (!Stepper_ValidateParams()) {
         printf("save blocked — fix warnings first\r\n");
-        return;
+        return 0;
     }
     EEPROM_Write(EE_ADDR_MMPSMAX,  motorParams.mmpsmax.u);
     EEPROM_Write(EE_ADDR_MMPSMIN,  motorParams.mmpsmin.u);
@@ -154,6 +154,7 @@ void Stepper_SaveParams(void)
     EEPROM_Write(EE_ADDR_DEBUG,    motorParams.debug.u);
     EEPROM_Write(EE_ADDR_MAGIC,    EEPROM_MAGIC_VALUE);
     printf("params saved\r\n");
+    return 1;
 }
 
 void Stepper_InitDefaults(void)
