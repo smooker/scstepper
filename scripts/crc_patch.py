@@ -91,6 +91,18 @@ def main():
     with open(bin_path, 'wb') as f:
         f.write(data)
 
+    # Patch ELF .fw_crc section so compare-sections matches patched flash
+    import tempfile, os
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.bin')
+    tmp.write(data[FW_CRC_OFFSET:FW_CRC_OFFSET + 128])
+    tmp.close()
+    subprocess.check_call([
+        'arm-none-eabi-objcopy',
+        '--update-section', '.fw_crc=' + tmp.name,
+        elf_path
+    ], stderr=subprocess.DEVNULL)
+    os.unlink(tmp.name)
+
     # Regenerate HEX from patched BIN
     subprocess.check_call([
         'arm-none-eabi-objcopy',
