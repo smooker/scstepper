@@ -10,10 +10,10 @@ set remote exec-file ./build/scstepper.elf
 end
 
 define fl
-fwc
 load ./build/scstepper.hex
 fwcheck
 end
+
 
 define ag
 dashboard -style discard_scrollback False

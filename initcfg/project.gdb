@@ -104,6 +104,7 @@ either stale flash (forgot to ld) or flash corruption."""
         super().__init__('fwcheck', gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
+        gdb.execute('set $fwcheck_ok = 0', to_string=True)
         try:
             out = gdb.execute('compare-sections', to_string=True)
         except Exception as e:
@@ -120,11 +121,12 @@ either stale flash (forgot to ld) or flash corruption."""
             print("\033[1;31m=== FWCHECK FAILED — flash != ELF ===\033[0m")
             for l in mismatches:
                 print("  \033[31m{}\033[0m".format(l))
-            print("  Run 'ld' to reflash.")
         elif matches:
             print("\033[1;32m=== FWCHECK OK — flash matches ELF ({} sections) ===\033[0m".format(len(matches)))
         else:
-            print("fwcheck: no sections compared (is ELF loaded? run 'file build/scstepper.elf')")
+            print("fwcheck: no sections compared (is ELF loaded? run 'ld')")
+
+FwCheckCmd()
 
 FwCheckCmd()
 
