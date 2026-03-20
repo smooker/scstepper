@@ -76,6 +76,32 @@ to catch corrupted EEPROM combinations.
 
 ---
 
+## WDT — да или не?
+
+### Аргументи ЗА
+- Ако firmware-ът увисне (безкраен цикъл, deadlock), WDT рестартира контролера
+- Стандартна практика за production embedded системи
+- STM32F411 има IWDG (independent watchdog, RC осцилатор — работи дори при clock fail)
+
+### Аргументи ПРОТИВ (специфично за тази машина)
+- При WDT reset по средата на движение: мотора спира рязко без decel → загуба на позиция
+- `SafeState_And_Blink()` вече покрива HardFault/NMI/BusFault — реалните crash случаи
+- При debug сесия: breakpoint = CPU спрян = WDT изтича = reset = сесията се разпада
+  → трябва IWDG да се спира при debug (DBGMCU_APB1_FZ бит) или да се кика от GDB
+- USB CDC: ако host е бавен при TX, firmware чака → WDT трябва да се кика в TX loop-а
+  → добавя complexity навсякъде
+
+### Предложение
+Ако се добавя — само IWDG, с timeout ≥ 2s, kick в main loop heartbeat.
+DBGMCU freeze при debug задължително:
+```c
+__HAL_DBGMCU_FREEZE_IWDG();  /* спира IWDG при debug halt */
+```
+
+**Решение:** открито — зависи дали машината ще работи unattended.
+
+---
+
 ## opencm3 / LL branch
 
 Reimplement firmware from scratch on a new branch using either:
