@@ -61,8 +61,9 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 /* Specify the memory areas */
 MEMORY
 {
-RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 512K
+  RAM    (xrw) : ORIGIN = 0x20000000, LENGTH = 128K
+  FLASH  (rx)  : ORIGIN = 0x08000000, LENGTH = 256K - 4  /* Sectors 0-5, minus CRC word */
+  FW_CRC (rx)  : ORIGIN = 0x0803FFFC, LENGTH = 4         /* last word before EEPROM Sector 6 */
 }
 
 /* Define output sections */
@@ -174,6 +175,14 @@ SECTIONS
   } >RAM
 
   
+
+  /* Firmware CRC word — patched by scripts/crc_patch.py after build.
+   * Covers [0x08000000 .. 0x0803FFFC) = 65535 words (256KB - 4B).
+   * Linker errors if firmware overflows into this region. */
+  .fw_crc :
+  {
+    KEEP(*(.fw_crc))
+  } >FW_CRC
 
   /* Remove information from the standard libraries */
   /DISCARD/ :

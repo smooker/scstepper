@@ -37,6 +37,7 @@ BUILD_DIR = build
 # C sources
 C_SOURCES =  \
 Core/Src/eeprom_emul_uint32_t.c \
+Core/Src/firmware_crc.c \
 Core/Src/main.c \
 Core/Src/stm32f4xx_it.c \
 Core/Src/stm32f4xx_hal_msp.c \
@@ -209,11 +210,21 @@ $(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) Makefile
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SZ) $@
 
+# CRC patch: .bin rule generates both bin and hex, then patches CRC word.
+# .hex depends on .bin so make runs .bin first when both are in 'all'.
+$(BUILD_DIR)/$(TARGET).bin: $(BUILD_DIR)/$(TARGET).elf | $(BUILD_DIR)
+	$(BIN) $< $@
+	$(HEX) $< $(BUILD_DIR)/$(TARGET).hex
+	@python3 scripts/crc_patch.py $< $@ $(BUILD_DIR)/$(TARGET).hex
+
+$(BUILD_DIR)/$(TARGET).hex: $(BUILD_DIR)/$(TARGET).bin
+	@: # generated and CRC-patched by the .bin rule above
+
 $(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
 	$(HEX) $< $@
-	
+
 $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
-	$(BIN) $< $@	
+	$(BIN) $< $@
 	
 $(BUILD_DIR):
 	mkdir $@		

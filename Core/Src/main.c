@@ -798,6 +798,25 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
+  /* ── Firmware CRC self-check — first thing, before any peripherals ──────
+   * STM32 CRC32 peripheral over [0x08000000 .. 0x0803FFFC) = 65535 words.
+   * Stored word at 0x0803FFFC patched by scripts/crc_patch.py after build.
+   * "." in morse = OK.  "SOS" + halt = flash corruption detected.        */
+  {
+      extern const uint32_t __fw_crc;
+      __HAL_RCC_CRC_CLK_ENABLE();
+      CRC->CR = CRC_CR_RESET;
+      const uint32_t *p   = (const uint32_t *)0x08000000U;
+      const uint32_t *end = &__fw_crc;
+      while (p < end) { CRC->DR = *p++; }
+      uint32_t computed = CRC->DR;
+      if (computed == __fw_crc) {
+          morse(".");          /* single beep = OK */
+      } else {
+          while (1) { morse("SOS"); HAL_Delay(2000); }   /* halt */
+      }
+  }
+
   setvbuf(stdout, NULL, _IONBF, 0);  /* disable buffering entirely */
 
   /* Override disconnect only: clear CDC_IsConnected as safety net
