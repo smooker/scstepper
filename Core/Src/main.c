@@ -184,6 +184,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
+void SafeState_And_Blink(void);
 void ProcessEvents(void);
 void RunHome(void);
 void RunHomeEx(uint8_t fromButtons);
@@ -1257,14 +1258,14 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : ES_L_Pin ES_R_Pin BUTT_JOGL_Pin BUTT_JOGR_Pin */
   GPIO_InitStruct.Pin = ES_L_Pin|ES_R_Pin|BUTT_JOGL_Pin|BUTT_JOGR_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : BUTT_STEPL_Pin BUTT_STEPR_Pin */
   GPIO_InitStruct.Pin = BUTT_STEPL_Pin|BUTT_STEPR_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : DIR_Pin BUZZ_Pin */
@@ -1711,8 +1712,6 @@ void ProcessEvents(void)
     }
 }
 
-/* USER CODE END 4 */
-
 /**
   * @brief  Safe state: Hi-Z all functional pins, fast-blink LED as crash indicator.
   *         Called from Error_Handler and all Cortex-M fault handlers.
@@ -1740,6 +1739,8 @@ void SafeState_And_Blink(void)
         for (volatile uint32_t i = 0; i < 300000UL; i++) {}
     }
 }
+
+/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.
