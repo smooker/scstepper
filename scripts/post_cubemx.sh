@@ -30,8 +30,10 @@ echo "--- [2/3] Fix GPIO_MODE_IT_RISING/FALLING → GPIO_MODE_IT_RISING_FALLING 
 FILE=Core/Src/main.c
 BEFORE_R=$(grep -c "GPIO_MODE_IT_RISING[^_]" "$FILE" || true)
 BEFORE_F=$(grep -c "GPIO_MODE_IT_FALLING[^_]" "$FILE" || true)
-sed -i 's/GPIO_MODE_IT_RISING\b/GPIO_MODE_IT_RISING_FALLING/g' "$FILE"
-sed -i 's/GPIO_MODE_IT_FALLING\b/GPIO_MODE_IT_RISING_FALLING/g' "$FILE"
+if [ "$BEFORE_R" -gt 0 ] || [ "$BEFORE_F" -gt 0 ]; then
+    sed -i 's/GPIO_MODE_IT_RISING\b/GPIO_MODE_IT_RISING_FALLING/g' "$FILE"
+    sed -i 's/GPIO_MODE_IT_FALLING\b/GPIO_MODE_IT_RISING_FALLING/g' "$FILE"
+fi
 AFTER=$(grep -c "GPIO_MODE_IT_RISING_FALLING" "$FILE" || true)
 if [ "$BEFORE_R" -gt 0 ] || [ "$BEFORE_F" -gt 0 ]; then
     echo ""
