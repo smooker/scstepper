@@ -128,7 +128,95 @@ either stale flash (forgot to ld) or flash corruption."""
 
 FwCheckCmd()
 
-FwCheckCmd()
+end
+
+# ─── eecheck: verify EEPROM emulation region before/after flashing ───────────
+python
+
+class EeCheckCmd(gdb.Command):
+    """Check EEPROM emulation pages directly in flash (no firmware needed).
+
+Usage: eecheck
+Reads STM32F411 Sector 6/7 page status and scans for magic key.
+Safe to run before 'fl' to confirm params are preserved.
+  VALID   = 0xAAAAAAAA (active page)
+  ERASED  = 0xFFFFFFFF (blank)
+  RECEIVE = 0xEEEEEEEE (swap in progress)
+Magic key 12 = 0x5AFEC0DE confirms SaveParams was called."""
+
+    PAGE0         = 0x08040000
+    PAGE1         = 0x08060000
+    RECORDS_START = 8
+    RECORD_SIZE   = 8
+    MAX_RECORDS   = (128 * 1024 - 8) // 8
+    STATUS_VALID   = 0xAAAAAAAA
+    STATUS_ERASED  = 0xFFFFFFFF
+    STATUS_RECEIVE = 0xEEEEEEEE
+    EE_ADDR_MAGIC  = 12
+    MAGIC_VALUE    = 0x5AFEC0DE
+
+    def __init__(self):
+        super().__init__('eecheck', gdb.COMMAND_USER)
+
+    def _read32(self, inf, addr):
+        return int.from_bytes(inf.read_memory(addr, 4), 'little')
+
+    def _status_str(self, s):
+        if s == self.STATUS_VALID:   return "\033[32mVALID\033[0m"
+        if s == self.STATUS_ERASED:  return "ERASED"
+        if s == self.STATUS_RECEIVE: return "\033[33mRECEIVE (swap in progress)\033[0m"
+        return "\033[31mUNKNOWN 0x{:08X}\033[0m".format(s)
+
+    def invoke(self, arg, from_tty):
+        try:
+            inf = gdb.selected_inferior()
+            p0 = self._read32(inf, self.PAGE0)
+            p1 = self._read32(inf, self.PAGE1)
+        except Exception as e:
+            print("eecheck: cannot read flash — connected? ({})".format(e))
+            return
+
+        print("PAGE0  0x{:08X}: {}".format(self.PAGE0, self._status_str(p0)))
+        print("PAGE1  0x{:08X}: {}".format(self.PAGE1, self._status_str(p1)))
+
+        active = None
+        if p0 == self.STATUS_VALID:
+            active = self.PAGE0
+        elif p1 == self.STATUS_VALID:
+            active = self.PAGE1
+
+        if active is None:
+            print("\033[1;31m=== EECHECK: no valid page — EEPROM blank or corrupt ===\033[0m")
+            return
+
+        # scan records; last occurrence of a key wins (newest write)
+        magic_val = None
+        record_count = 0
+        try:
+            for i in range(self.MAX_RECORDS):
+                addr = active + self.RECORDS_START + i * self.RECORD_SIZE
+                hdr  = self._read32(inf, addr)
+                if hdr == 0xFFFFFFFF:   # empty slot — end of written area
+                    break
+                vaddr = hdr >> 16
+                data  = self._read32(inf, addr + 4)
+                if vaddr == self.EE_ADDR_MAGIC:
+                    magic_val = data
+                record_count += 1
+        except Exception as e:
+            print("eecheck: scan error at record {}: {}".format(i, e))
+            return
+
+        print("  Active page: 0x{:08X},  {} record(s) written".format(active, record_count))
+
+        if magic_val == self.MAGIC_VALUE:
+            print("\033[1;32m=== EECHECK OK — magic 0x{:08X} present, params were saved ===\033[0m".format(magic_val))
+        elif magic_val is not None:
+            print("\033[1;31m=== EECHECK WARN — magic key found but wrong value: 0x{:08X} (expected 0x{:08X}) ===\033[0m".format(magic_val, self.MAGIC_VALUE))
+        else:
+            print("\033[1;33m=== EECHECK: magic absent — EEPROM init never saved (params are defaults) ===\033[0m")
+
+EeCheckCmd()
 
 end
 

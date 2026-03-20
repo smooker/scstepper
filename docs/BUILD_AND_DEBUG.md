@@ -99,6 +99,7 @@ scripts/go_gdb.sh
 | `params` | All motor parameters |
 | `rxbuf` | CDC RX ring buffer occupancy + raw bytes |
 | `mem_regions` | STM32F411 memory map |
+| `eecheck` | Verify EEPROM page status + magic key in flash (safe before `fl`) |
 | `inject CMD` | Write CDC command into RX buffer (firmware executes on `c`) |
 | `svd TIM2` | STM32 peripheral registers via SVD |
 

@@ -838,7 +838,9 @@ int main(void)
 
   Stepper_DumpParams();
 
-  if (eeprom_blank) {
+  if (!eeprom_blank) {
+      printf("  EEPROM OK — params loaded from flash\r\n");
+  } else {
       printf("\r\n*** EEPROM blank — motor DISABLED until answered ***\r\n");
       printf("*** Init with defaults? [y/n]                    ***\r\n");
       char ans = 0;
