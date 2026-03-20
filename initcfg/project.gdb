@@ -48,7 +48,6 @@ define st
   printf "stepperState  : %s\n",   stepperState
   printf "posSteps      : %d\n",   posSteps
   printf "posHomed      : %d\n",   posHomed
-  printf "esBlocked     : %d\n",   esBlocked
   printf "rangeUsableMm : %.2f\n", rangeUsableMm
   printf "buttonsEn     : %d\n",   buttonsEn
   printf "endstopsEn    : %d\n",   endstopsEn
@@ -88,6 +87,47 @@ define rxbuf
 end
 document rxbuf
 Dump CDC RX ring buffer occupancy and raw bytes.
+end
+
+# ─── fwcheck: verify running flash matches ELF on disk ───────────────────────
+python
+
+class FwCheckCmd(gdb.Command):
+    """Compare running flash against ELF file on disk.
+
+Usage: fwcheck
+Runs GDB compare-sections and reports MATCH / MISMATCH per section.
+A mismatch means the binary in flash differs from build/scstepper.elf —
+either stale flash (forgot to ld) or flash corruption."""
+
+    def __init__(self):
+        super().__init__('fwcheck', gdb.COMMAND_USER)
+
+    def invoke(self, arg, from_tty):
+        try:
+            out = gdb.execute('compare-sections', to_string=True)
+        except Exception as e:
+            print("fwcheck: compare-sections failed: {}".format(e))
+            return
+        mismatches = []
+        matches = []
+        for line in out.splitlines():
+            if 'MIS-MATCHED' in line or 'mismatch' in line.lower():
+                mismatches.append(line.strip())
+            elif 'matched' in line.lower():
+                matches.append(line.strip())
+        if mismatches:
+            print("\033[1;31m=== FWCHECK FAILED — flash != ELF ===\033[0m")
+            for l in mismatches:
+                print("  \033[31m{}\033[0m".format(l))
+            print("  Run 'ld' to reflash.")
+        elif matches:
+            print("\033[1;32m=== FWCHECK OK — flash matches ELF ({} sections) ===\033[0m".format(len(matches)))
+        else:
+            print("fwcheck: no sections compared (is ELF loaded? run 'file build/scstepper.elf')")
+
+FwCheckCmd()
+
 end
 
 # ─── mem_regions: STM32F411 memory map ───────────────────────────────────────
