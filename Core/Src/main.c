@@ -1714,21 +1714,41 @@ void ProcessEvents(void)
 /* USER CODE END 4 */
 
 /**
+  * @brief  Safe state: Hi-Z all functional pins, fast-blink LED as crash indicator.
+  *         Called from Error_Handler and all Cortex-M fault handlers.
+  *         Must not use HAL_Delay (SysTick IRQ may be dead).
+  */
+void SafeState_And_Blink(void)
+{
+    __disable_irq();
+
+    /* Hi-Z all functional pins: input mode (MODER=00), no pull (PUPDR=00).
+     * PA3=ES_L  PA4=ES_R  PA6=JOGL  PA7=JOGR
+     * PB0=STEPL PB1=STEPR PB10=PULSE PB14=DIR PB15=BUZZ */
+    GPIOA->MODER &= ~((3UL<<(3*2))|(3UL<<(4*2))|(3UL<<(6*2))|(3UL<<(7*2)));
+    GPIOA->PUPDR &= ~((3UL<<(3*2))|(3UL<<(4*2))|(3UL<<(6*2))|(3UL<<(7*2)));
+
+    GPIOB->MODER &= ~((3UL<<(0*2))|(3UL<<(1*2))|(3UL<<(10*2))|(3UL<<(14*2))|(3UL<<(15*2)));
+    GPIOB->PUPDR &= ~((3UL<<(0*2))|(3UL<<(1*2))|(3UL<<(10*2))|(3UL<<(14*2))|(3UL<<(15*2)));
+
+    /* PC13=LED_USER: force output (MODER=01) */
+    GPIOC->MODER = (GPIOC->MODER & ~(3UL<<(13*2))) | (1UL<<(13*2));
+
+    /* Fast blink ~16Hz — direct register, no HAL_Delay */
+    while (1) {
+        GPIOC->ODR ^= (1UL << 13);
+        for (volatile uint32_t i = 0; i < 300000UL; i++) {}
+    }
+}
+
+/**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-    HAL_GPIO_WritePin(LED_USER_GPIO_Port, LED_USER_Pin, GPIO_PIN_RESET);
-    HAL_Delay(50);
-    HAL_GPIO_WritePin(LED_USER_GPIO_Port, LED_USER_Pin, GPIO_PIN_SET);
-    HAL_Delay(50);
-  }
+  SafeState_And_Blink();
   /* USER CODE END Error_Handler_Debug */
 }
 

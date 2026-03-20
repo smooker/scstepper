@@ -19,9 +19,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def run_make_dry():
     """Run 'make -n' and return lines."""
     r = subprocess.run(
-        ['make', '-n', '--no-print-directory'],
+        ['make', '-n', '-B', '--no-print-directory', 'all'],
         capture_output=True, text=True, cwd=ROOT
     )
+    if r.returncode != 0 and not r.stdout.strip():
+        print(f"make -n failed (rc={r.returncode}):\n{r.stderr}", file=sys.stderr)
     return r.stdout.splitlines()
 
 def parse_compile_commands(lines):

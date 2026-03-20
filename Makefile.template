@@ -168,9 +168,11 @@ CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
 LDSCRIPT = stm32f411ceux_flash.ld
 
 # libraries
-LIBS = -lc -lm -lnosys 
-LIBDIR = 
-LDFLAGS = $(MCU) -specs=nano.specs -specs=nosys.specs -u _printf_float -u _scanf_float -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections -Wl,--no-warn-rwx-segments
+LIBS = -lc -lm -lnosys
+LIBDIR =
+# Suppress false-positive linker warning for .data AT>FLASH (older ld doesn't know this flag)
+NO_WARN_RWX := $(shell $(PREFIX)ld --help 2>&1 | grep -q no-warn-rwx-segments && echo -Wl,--no-warn-rwx-segments)
+LDFLAGS = $(MCU) -specs=nano.specs -specs=nosys.specs -u _printf_float -u _scanf_float -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections $(NO_WARN_RWX)
 
 # default action: build all
 all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
@@ -221,6 +223,13 @@ $(BUILD_DIR):
 #######################################
 clean:
 	-rm -fR $(BUILD_DIR)
+
+#######################################
+# Qt Creator / clangd project files
+#######################################
+.PHONY: qtc
+qtc:
+	python3 scripts/gen_qtc.py
 
 #######################################
 # check vs template
