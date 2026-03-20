@@ -853,7 +853,7 @@ int main(void)
 
   morse("V");
 
-  printf("\033[2J\033[H");  /* clear screen */
+  //printf("\033[2J\033[H");  /* clear screen — disabled: boot log (CRC, EEPROM) must remain visible */
   printf("\r\n===============================================\r\n");
   printf("  stepper_sc  %s  %s\r\n", GIT_HASH, BUILD_DATE);
   printf("  STM32F411CEU6 @ 96 MHz\r\n");
