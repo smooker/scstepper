@@ -3,14 +3,13 @@
 # Usage: pulse.sh [capture.sr] [steps_per_mm]
 #
 # Examples:
-#   pulse.sh                          # open capture_both.sr, 400 spm
-#   pulse.sh capture_mover.sr         # open specific file
-#   pulse.sh capture_both.sr 80       # override steps_per_mm
-#
-# Generates a .pvs setup file with edge counter + stepper_motor decoders,
-# then opens pulseview with it.
+#   pulse.sh                                     # open captures/capture_both.sr, 400 spm
+#   pulse.sh captures/capture_mover.sr           # open specific file
+#   pulse.sh captures/capture_both.sr 80         # override steps_per_mm
 
-SR="${1:-capture_both.sr}"
+cd "$(dirname "$0")/.."
+
+SR="${1:-captures/capture_both.sr}"
 SPM="${2:-400}"
 
 if [ ! -f "$SR" ]; then
@@ -20,7 +19,6 @@ fi
 
 PVS="${SR%.sr}.pvs"
 
-# Convert steps_per_mm to little-endian double hex for GVariant
 SPM_HEX=$(python3 -c "import struct; print(''.join(f'\\\\x{b:02x}' for b in struct.pack('<d', $SPM)))")
 
 cat > "$PVS" << EOF

@@ -150,7 +150,7 @@ C_INCLUDES =  \
 # compile gcc flags
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Werror -Wall -Wextra -fdata-sections -ffunction-sections
 
-CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -dM -Werror -Wall -Wextra -Wno-error=unused-parameter -fdata-sections -ffunction-sections -include Core/Inc/defines.h
+CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Werror -Wall -Wextra -fdata-sections -ffunction-sections -include Core/Inc/defines.h
 
 ifeq ($(DEBUG), 1)
 CFLAGS += -g3 -gdwarf-2
@@ -170,7 +170,7 @@ LDSCRIPT = stm32f411ceux_flash.ld
 # libraries
 LIBS = -lc -lm -lnosys 
 LIBDIR = 
-LDFLAGS = $(MCU) -specs=nano.specs -specs=nosys.specs -u _printf_float -u _scanf_float -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
+LDFLAGS = $(MCU) -specs=nano.specs -specs=nosys.specs -u _printf_float -u _scanf_float -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections -Wl,--no-warn-rwx-segments
 
 # default action: build all
 all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
@@ -188,8 +188,11 @@ vpath %.s $(sort $(dir $(ASM_SOURCES)))
 OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(ASMM_SOURCES:.S=.o)))
 vpath %.S $(sort $(dir $(ASMM_SOURCES)))
 
-# CubeMX-generated files with intentional unused parameters — silence locally
+# CubeMX/HAL-generated files with intentional unused parameters — silence locally
 $(BUILD_DIR)/usbd_conf.o: USB_DEVICE/Target/usbd_conf.c Makefile | $(BUILD_DIR)
+	$(CC) -c $(CFLAGS) -Wno-unused-parameter -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
+
+$(BUILD_DIR)/stm32f4xx_hal_flash_ex.o: Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c Makefile | $(BUILD_DIR)
 	$(CC) -c $(CFLAGS) -Wno-unused-parameter -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
 
 $(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR)

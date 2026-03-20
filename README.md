@@ -58,3 +58,4 @@ Flash sectors 6 & 7, 7 parameters: `mmpsmax`, `mmpsmin`, `dvdtacc`, `dvdtdecc`, 
 
 - [Build and Debug](docs/build-and-debug.md) — toolchain setup, GDB, flashing, pinout, CLI commands
 - [Capture Analysis](docs/capture_analysis.md) — FX2/sigrok logic capture of `move 10`, ramp bug analysis
+- [Credits](CREDITS.md) — technologies, tools, and libraries used

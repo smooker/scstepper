@@ -1291,17 +1291,6 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
-  /* Enable EXTI interrupts for buttons and endstops */
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 2, 0);      /* BUTT_STEPL PB0 */
-  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 2, 0);      /* BUTT_STEPR PB1 */
-  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 0);      /* ES_L PA3 */
-  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 1, 0);      /* ES_R PA4 */
-  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 2, 0);    /* BUTT_JOGL PA6, BUTT_JOGR PA7 */
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 /* USER CODE END MX_GPIO_Init_2 */
 }
 

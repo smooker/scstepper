@@ -14,13 +14,12 @@
 #   go.sh build
 #   go.sh flash
 #   go.sh capture
-#   go.sh view capture_both.sr
-#   go.sh speed capture_both.sr
+#   go.sh view ../captures/capture_both.sr
+#   go.sh speed ../captures/capture_both.sr
 #   go.sh all
 
 set -e
-cd "$(dirname "$0")"
-PROJ="$(dirname "$PWD")"
+cd "$(dirname "$0")/.."
 SPM=400
 
 cmd_build() {
@@ -32,7 +31,7 @@ cmd_flash() {
     cmd_build
     echo "=== FLASH ==="
     arm-none-eabi-gdb -batch \
-        -ex "file build/stepper_sc.elf" \
+        -ex "file build/scstepper.elf" \
         -ex "target extended-remote /dev/ttyBmpGdb" \
         -ex "monitor swdp_scan" \
         -ex "attach 1" \
@@ -44,7 +43,7 @@ cmd_flash() {
 }
 
 cmd_capture() {
-    local SR="${PROJ}/capture_both.sr"
+    local SR="captures/capture_both.sr"
     echo "=== CAPTURE ==="
     echo "Will send: mover 5, then movel 5"
     read -p "Motor safe to move? [y/N] " yn
@@ -63,7 +62,7 @@ cmd_capture() {
 }
 
 cmd_speed() {
-    local SR="${1:-${PROJ}/capture_both.sr}"
+    local SR="${1:-captures/capture_both.sr}"
     local OUT="${SR%.sr}_speed.sr"
     echo "=== SPEED ==="
     python3 - "$SR" "$OUT" "$SPM" << 'PYEOF'
@@ -75,12 +74,10 @@ chunks = sorted([f for f in z.namelist() if f.startswith('logic-1-')])
 raw = b''.join(z.read(c) for c in chunks)
 meta = z.read('metadata').decode()
 
-# Parse samplerate from metadata
 samplerate = 100000
 for line in meta.split('\n'):
     if line.startswith('samplerate='):
         s = line.split('=')[1].strip()
-        # Handle "100 kHz", "1 MHz", or plain "100000"
         s = s.replace(' ', '')
         if s.lower().endswith('khz'):
             samplerate = int(float(s[:-3]) * 1000)
@@ -108,7 +105,6 @@ for i in range(1, len(raw)):
             if not d6:
                 current_speed = -current_speed
         prev_rising = i
-    # Drop speed to zero if no pulse within 2x last period
     if prev_rising is not None and last_period is not None:
         if (i - prev_rising) > last_period * 2:
             current_speed = 0.0
@@ -139,7 +135,6 @@ print(f"Speed range: {min(speed):.1f} to {max(speed):.1f} mm/s")
 print(f"Written: {out_file}")
 PYEOF
 
-    # Generate .pvs with correct trace heights and decoders
     local PVS="${OUT%.sr}.pvs"
     cat > "$PVS" << 'PVSEOF'
 [General]
@@ -147,30 +142,6 @@ decode_signals=2
 generated_signals=0
 meta_objs=0
 views=1
-
-[0]
-enabled=false
-name=0
-
-[1]
-enabled=false
-name=1
-
-[2]
-enabled=false
-name=2
-
-[3]
-enabled=false
-name=3
-
-[4]
-enabled=false
-name=4
-
-[5]
-enabled=false
-name=5
 
 [D6]
 enabled=true
@@ -237,12 +208,6 @@ enabled=true
 name=Stepper Motor
 
 [view0]
-0\trace_height=30
-1\trace_height=30
-2\trace_height=30
-3\trace_height=30
-4\trace_height=30
-5\trace_height=30
 D6\trace_height=64
 D7\trace_height=64
 Speed%20mm\s\autoranging=true
@@ -257,7 +222,7 @@ PVSEOF
 }
 
 cmd_view() {
-    local SR="${1:-${PROJ}/capture_both_speed.sr}"
+    local SR="${1:-captures/capture_both_speed.sr}"
     local PVS="${SR%.sr}.pvs"
     echo "=== VIEW ==="
     if [ ! -f "$PVS" ]; then
@@ -279,8 +244,8 @@ case "${1:-help}" in
         cmd_flash
         sleep 2
         cmd_capture
-        cmd_speed "${PROJ}/capture_both.sr"
-        cmd_view "${PROJ}/capture_both_speed.sr"
+        cmd_speed "captures/capture_both.sr"
+        cmd_view "captures/capture_both_speed.sr"
         ;;
     *)
         echo "Usage: go.sh {build|flash|capture|speed|view|all} [file]"
