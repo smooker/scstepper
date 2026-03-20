@@ -86,12 +86,16 @@ scripts/go_gdb.sh
 
 ### GDB commands
 
+**Connection & flash:**
+
 | Command | Action |
 |---------|--------|
-| `ag` | Connect BMP, SWD scan, attach target |
-| `ld` | Load ELF symbols (no flash) |
-| `fwc` | `ld` + verify flash matches ELF on disk |
-| `fl` | Flash `build/scstepper.hex` to target + verify |
+| `ag` | Connect BMP, SWD scan, attach target (no symbols) |
+| `ld` | Load ELF symbols into GDB (no flash write) |
+| `fwc` | `ld` + compare-sections: verify flash matches ELF on disk |
+| `fl` | Flash `build/scstepper.hex` to target + verify with fwcheck |
+
+**Inspection (requires `ld` or `fwc` first):**
 
 | Command | Action |
 |---------|--------|
@@ -99,7 +103,7 @@ scripts/go_gdb.sh
 | `params` | All motor parameters |
 | `rxbuf` | CDC RX ring buffer occupancy + raw bytes |
 | `mem_regions` | STM32F411 memory map |
-| `eecheck` | Verify EEPROM page status + magic key in flash (safe before `fl`) |
+| `eecheck` | EEPROM page status (raw flash) + eepromStatus from firmware |
 | `inject CMD` | Write CDC command into RX buffer (firmware executes on `c`) |
 | `svd TIM2` | STM32 peripheral registers via SVD |
 
