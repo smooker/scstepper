@@ -56,7 +56,7 @@ class StepperPanel(Dashboard.Module):
         rxt = vi("'main.c'::rxTail", -1)
         txb = vi("'main.c'::txBusy", -1)
         if rxh >= 0:
-            pending = (rxh - rxt + 512) % 512
+            pending = (rxh - rxt + 512) % 512  # CDC_RX_BUF_SIZE=512
             rows.append(
                 'cdc    rx head={}  tail={}  pending={}B  txBusy={}'
                 .format(rxh, rxt, pending, txb))

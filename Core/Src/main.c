@@ -113,14 +113,14 @@ static uint32_t mrsTick   = 0;
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
 //
-#define RX_BUF_SIZE  512
-static uint8_t UserTxBufferFS[RX_BUF_SIZE];
+#define CDC_TX_BUF_SIZE  512
+static uint8_t UserTxBufferFS[CDC_TX_BUF_SIZE];
 static volatile uint16_t txLen   = 0;
 static volatile uint8_t  txBusy  = 0;
 
 //
-#define TX_BUF_SIZE  512
-static uint8_t UserRxBufferFS[TX_BUF_SIZE];
+#define CDC_RX_BUF_SIZE  512
+static uint8_t UserRxBufferFS[CDC_RX_BUF_SIZE];
 static volatile uint16_t rxHead = 0;
 static volatile uint16_t rxTail = 0;
 //
@@ -644,7 +644,7 @@ void MyCDC_Receive_FS(uint8_t *Buf, uint32_t *Len)
 {
     for (uint32_t i = 0; i < *Len; i++)
     {
-        uint16_t next = (rxHead + 1) % RX_BUF_SIZE;
+        uint16_t next = (rxHead + 1) % CDC_RX_BUF_SIZE;
         if (next != rxTail)
         {
             UserRxBufferFS[rxHead] = Buf[i];
@@ -662,14 +662,14 @@ uint8_t CDC_RxAvailable(void)
 uint8_t CDC_RxRead(void)
 {
     uint8_t byte = UserRxBufferFS[rxTail];
-    rxTail = (rxTail + 1) % RX_BUF_SIZE;
+    rxTail = (rxTail + 1) % CDC_RX_BUF_SIZE;
     return byte;
 }
 
 /* Queue bytes for async TX. Returns 0 if TX buffer full. */
 uint8_t CDC_TxWrite(const uint8_t *data, uint16_t len)
 {
-    if (txBusy || (txLen + len) > APP_TX_DATA_SIZE)
+    if (txBusy || (txLen + len) > CDC_TX_BUF_SIZE)
         return 0; /* busy or won't fit */
 
     memcpy(&UserTxBufferFS[txLen], data, len);
@@ -1258,13 +1258,13 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : ES_L_Pin ES_R_Pin BUTT_JOGL_Pin BUTT_JOGR_Pin */
   GPIO_InitStruct.Pin = ES_L_Pin|ES_R_Pin|BUTT_JOGL_Pin|BUTT_JOGR_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : BUTT_STEPL_Pin BUTT_STEPR_Pin */
   GPIO_InitStruct.Pin = BUTT_STEPL_Pin|BUTT_STEPR_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
