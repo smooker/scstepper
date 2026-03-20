@@ -83,11 +83,13 @@ a firmware issue. The machine will not self-destruct from a gentle endstop hit.
 Soft limits require homed + measured range — not used by end users.
 Deferred for future developer use. See `docs/TODO.md`.
 
-### 12. Stepper_RunContinuous = INT32_MAX/2 steps (stepper.c:327)
+### 12. Stepper_RunContinuous = INT32_MAX steps — **BY DESIGN**
 
-If jog button release EXTI fails to fire, motor runs ~6.6 hours at 50mm/s.
-
-**Fix:** Add a maximum continuous run timeout or step limit.
+`stepsRemaining = 0x7FFFFFFF` means "run until stopped." `int32_t` is correct —
+`uint32_t` would cause signed arithmetic issues in ramp calculations (`/2`,
+comparisons with `decelSteps`, float cast). `0xFFFFFFFF` as int32 = -1 → stops
+immediately. Motor is bounded by physical endstops. Stopped by EXTI on button
+release or endstop hit.
 
 ### 13. CLI move commands clear esBlocked (main.c:788-802)
 
