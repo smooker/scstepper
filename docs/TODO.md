@@ -1,5 +1,68 @@
 # TODO
 
+## Project-agnostic STM32 firmware template — new repo
+
+Extract the workflow and tooling from scstepper into a reusable
+`stm32fw-template` project that any new STM32 firmware project can
+start from.
+
+### What to extract (project-agnostic)
+
+| Component | What it provides |
+|-----------|-----------------|
+| `Makefile.template` | Custom targets: `check`, `size`, `userinstall`, `sysinstall`, `post_cubemx`, `qtc` |
+| `scripts/post_cubemx.sh` | CubeMX regeneration safety: restore Makefile + patch GPIO IT modes |
+| `scripts/go.sh` | Build / flash / capture / view one-liner |
+| `scripts/go_gdb.sh` | GDB launch with dashboard |
+| `scripts/99-<project>.rules` | udev symlinks for BMP + target CDC + FX2 |
+| `initcfg/gdbinit` | GDB Dashboard (project-agnostic) |
+| `initcfg/project.gdb` | `inject`, `fwcheck`, `ld`, `ag`, `mem_regions` — all project-agnostic |
+| `initcfg/STM32F4xx.svd` | SVD for peripheral register access in GDB |
+| `initcfg/dot-gdbinit-for-home` | `~/.gdbinit` auto-load enable |
+| `make check` | Makefile==template + GPIO patch + stale GDB symbol checks |
+
+### What stays project-specific
+
+- `initcfg/scstepper_panel.py` — Dashboard panel (project variables)
+- `initcfg/project.gdb` `st`/`params`/`rxbuf` defines (project symbols)
+- `Core/` firmware source
+- `captures/` sigrok files
+- Stale symbol list in `make check`
+
+### Implementation sketch
+
+```
+stm32fw-template/
+├── Makefile.template       # rename TARGET, add project sources
+├── scripts/
+│   ├── post_cubemx.sh      # parameterize GPIO patch patterns
+│   ├── go.sh               # parameterize device symlinks
+│   ├── go_gdb.sh
+│   └── 99-template.rules   # rename symlinks
+├── initcfg/
+│   ├── gdbinit             # GDB Dashboard (unchanged)
+│   ├── project.gdb         # inject + fwcheck + ag + ld (unchanged)
+│   ├── panel_template.py   # minimal Dashboard panel stub
+│   └── STM32F411.svd
+└── docs/
+    ├── PROGRAMMER_GUIDE.md # (this guide, generalized)
+    └── AUDIT.md            # blank template
+```
+
+`post_cubemx.sh` GPIO patch: make the IT mode patterns configurable
+via a variable at the top of the script rather than hardcoded regex.
+
+### Why bother
+
+Starting a new STM32 project from CubeMX bare gives you:
+- No `make check`
+- No CubeMX regeneration safety
+- No GDB Dashboard
+- No `inject` / `fwcheck`
+- No logic analyzer workflow
+
+Starting from this template gives you all of it in 15 minutes.
+
 ## ~~Cross-parameter validation in Stepper_SetParam()~~ — DONE 2026-03-20
 
 Currently each parameter is validated individually against its min/max range.
