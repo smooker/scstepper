@@ -76,6 +76,21 @@ to catch corrupted EEPROM combinations.
 
 ---
 
+## Soft position limits (post-home)
+
+After homing + `range` measurement, `posSteps` is tracked but not enforced.
+A `move 999` can run past ES_R if EXTI debounce misses a trigger.
+
+**When to implement:** when developer-facing `moveto` / scripted positioning is used.
+End users do not use `moveto` — deferred intentionally.
+
+**Implementation sketch:**
+- After `home` + `range`: `softLimitMax = (int32_t)(rangeUsableMm * motorParams.spmm.u)`
+- Before `Stepper_Move` / `Stepper_MoveSteps`: if `posHomed`, clamp target to `[0, softLimitMax]`
+- No new EEPROM params — derived from `rangeUsableMm` at runtime
+
+---
+
 ## WDT — да или не?
 
 ### Аргументи ЗА

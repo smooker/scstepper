@@ -78,12 +78,10 @@ function — the operator is expected to verify ES_L works before calling it,
 or to call `home` deliberately. A broken endstop is a maintenance issue, not
 a firmware issue. The machine will not self-destruct from a gentle endstop hit.
 
-### 11. No soft position limits
+### 11. No soft position limits — **INTENTIONAL / TODO**
 
-`posSteps` tracks position but there are no software travel limits.
-After homing, `move 999` runs past the right endstop if EXTI debounce misses.
-
-**Fix:** Add configurable soft limits (EEPROM params), check before move.
+Soft limits require homed + measured range — not used by end users.
+Deferred for future developer use. See `docs/TODO.md`.
 
 ### 12. Stepper_RunContinuous = INT32_MAX/2 steps (stepper.c:327)
 
