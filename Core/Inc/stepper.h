@@ -65,6 +65,8 @@
 #define PARAM_MIN_DEBUG     0UL
 #define PARAM_MAX_DEBUG     0xFFUL
 
+#define PARAM_MAX_STEP_FREQ 200000UL /* Hz — typical stepper driver pulse limit */
+
 #define MAX_RAMP_STEPS      512
 
 /* ---- State machine ------------------------------------------------- */
@@ -88,5 +90,6 @@ void     Stepper_DumpParams(void);
 void     Stepper_SaveParams(void);
 void     Stepper_LoadParams(void);
 void     Stepper_SetParam(const char *name, float value);
+void     Stepper_ValidateParams(void);
 
 #endif /* STEPPER_H */

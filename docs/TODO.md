@@ -1,6 +1,6 @@
 # TODO
 
-## Cross-parameter validation in Stepper_SetParam()
+## ~~Cross-parameter validation in Stepper_SetParam()~~ — DONE 2026-03-20
 
 Currently each parameter is validated individually against its min/max range.
 Missing: **consistency checks between parameters** — a user can set individually

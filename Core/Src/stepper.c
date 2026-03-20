@@ -189,6 +189,65 @@ static int check_u(const char *name, uint32_t v, uint32_t mn, uint32_t mx)
     return 1;
 }
 
+/* Cross-parameter consistency check — called after every successful set and at boot */
+void Stepper_ValidateParams(void)
+{
+    int ok = 1;
+
+    /* mmpsmin must be strictly less than mmpsmax */
+    if (motorParams.mmpsmin.f >= motorParams.mmpsmax.f) {
+        printf("WARN: mmpsmin (%.2f) >= mmpsmax (%.2f) — ramp broken!\r\n",
+               motorParams.mmpsmin.f, motorParams.mmpsmax.f);
+        ok = 0;
+    }
+
+    /* ramp table overflow check */
+    if (motorParams.spmm.u > 0) {
+        float vmax_sps = motorParams.mmpsmax.f * (float)motorParams.spmm.u;
+        float vmin_sps = motorParams.mmpsmin.f * (float)motorParams.spmm.u;
+        float dv2 = vmax_sps * vmax_sps - vmin_sps * vmin_sps;
+
+        float accel_steps = dv2 / (2.0f * motorParams.dvdtacc.f  * (float)motorParams.spmm.u);
+        float decel_steps = dv2 / (2.0f * motorParams.dvdtdecc.f * (float)motorParams.spmm.u);
+
+        if (accel_steps > (float)MAX_RAMP_STEPS) {
+            printf("WARN: accel ramp = %.0f steps > MAX_RAMP_STEPS (%d) "
+                   "— increase dvdtacc or reduce mmpsmax\r\n",
+                   accel_steps, MAX_RAMP_STEPS);
+            ok = 0;
+        }
+        if (decel_steps > (float)MAX_RAMP_STEPS) {
+            printf("WARN: decel ramp = %.0f steps > MAX_RAMP_STEPS (%d) "
+                   "— increase dvdtdecc or reduce mmpsmax\r\n",
+                   decel_steps, MAX_RAMP_STEPS);
+            ok = 0;
+        }
+
+        /* step pulse frequency at max speed */
+        float max_freq = vmax_sps;
+        if (max_freq > (float)PARAM_MAX_STEP_FREQ) {
+            printf("WARN: step freq at mmpsmax = %.0f Hz > driver limit (%lu Hz) "
+                   "— reduce mmpsmax or spmm\r\n",
+                   max_freq, PARAM_MAX_STEP_FREQ);
+            ok = 0;
+        }
+    }
+
+    /* homing speed must be within [mmpsmin, mmpsmax] */
+    if (motorParams.homespd.f > motorParams.mmpsmax.f) {
+        printf("WARN: homespd (%.2f) > mmpsmax (%.2f)\r\n",
+               motorParams.homespd.f, motorParams.mmpsmax.f);
+        ok = 0;
+    }
+    if (motorParams.homespd.f < motorParams.mmpsmin.f) {
+        printf("WARN: homespd (%.2f) < mmpsmin (%.2f)\r\n",
+               motorParams.homespd.f, motorParams.mmpsmin.f);
+        ok = 0;
+    }
+
+    if (ok) printf("params ok\r\n");
+}
+
 void Stepper_SetParam(const char *name, float value)
 {
     uint32_t uval = (value >= 0.0f) ? (uint32_t)value : 0;
@@ -206,6 +265,7 @@ void Stepper_SetParam(const char *name, float value)
     else if (strcmp(name, "debug")    == 0) { if (!check_u(name, uval,  PARAM_MIN_DEBUG,    PARAM_MAX_DEBUG))    return; motorParams.debug.u    = uval;  }
     else { printf("unknown param: %s\r\n", name); return; }
     printf("%s = %.3f\r\n", name, value);
+    Stepper_ValidateParams();
 }
 
 /* ---- Init --------------------------------------------------------- */

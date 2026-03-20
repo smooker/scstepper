@@ -943,6 +943,7 @@ int main(void)
   lineBuf[0] = '\0';
 
   Stepper_LoadParams();
+  Stepper_ValidateParams();
   Stepper_Init(&htim2);
 
   morse("V");
