@@ -218,3 +218,60 @@ Independent assessment by a fresh Claude Sonnet 4.6 instance, given only the sou
 ---
 
 *Second opinion by Claude Sonnet 4.6 — sw2 instance, 2026-03-20*
+
+---
+
+## TODO: Code Size Optimization
+
+### Quick wins (low risk)
+
+**1. Switch `-O0` → `-Os` in Makefile**
+```makefile
+OPT = -Os   # optimize for size
+```
+`-O0` = no optimization (debug default). `-Os` = size-optimized, still debuggable with
+`-g3 -gdwarf-2`. Expected savings: 30-50% flash. For debug builds keep `-Og`.
+
+**2. Remove dead code** (never called):
+- `ProcessLineOld()` — main.c:845 (~285 lines)
+- `initParams()` — main.c:268
+- `writeParams()` — main.c:280
+- `readParams()` — main.c:322
+
+Note: `dumpVars()` IS called via `dump` CLI command — keep it.
+
+**3. Remove `-u _printf_float` / `-u _scanf_float` from LDFLAGS**
+Forces linking of float printf/scanf from newlib-nano even if unused.
+Check: does firmware actually print floats via `printf`? If only via CDC
+`sprintf` → check if `%f` is used in format strings. If yes, keep; if
+`printf` is integer-only, remove and save ~5-8 KB.
+
+**4. Remove `-dM` from CFLAGS if present**
+Dumps all predefined macros to stdout during compile — debug leftover.
+Currently not in Makefile — already clean.
+
+**5. Enable LTO (Link Time Optimization)**
+```makefile
+CFLAGS  += -flto
+LDFLAGS += -flto
+```
+Eliminates dead code across translation units. Works well with `-Os`.
+Risk: longer build time, occasional LTO bugs with HAL — test carefully.
+
+### Workflow suggestion
+
+Add a `size` target to Makefile:
+```makefile
+.PHONY: size
+size: $(BUILD_DIR)/$(TARGET).elf
+	$(SZ) --format=berkeley $<
+```
+Run before/after each optimization to track flash/RAM usage.
+
+### Priority order
+
+1. `-Os` (5 min, biggest gain)
+2. Dead code removal (30 min)
+3. Check `_printf_float` necessity (15 min)
+4. LTO (test carefully, last)
+
