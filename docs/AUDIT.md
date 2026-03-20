@@ -182,7 +182,7 @@ Independent assessment by a fresh Claude Sonnet 4.6 instance, given only the sou
 | Code organization       | A     | Clear separation (stepper.c / main.c), USER CODE sections work        |
 | Fault handling          | B+    | SafeState_And_Blink() solid; Error_Handler deadlock breaks it         |
 | Motor control logic     | B     | Physics-based ramps; decelSteps mismatch + no soft limits             |
-| CubeMX robustness       | B−    | Survives regen via template; GPIO patch is fragile; .ioc not in repo  |
+| CubeMX robustness       | B−    | Survives regen via template; GPIO patch is fragile; .ioc is in repo   |
 | Unfixed known bugs      | D     | 7+ documented issues still open (see Bugs section above)              |
 | Watchdog / recovery     | F     | No watchdog timer; no stall detection; no position sanity check       |
 
