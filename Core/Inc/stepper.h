@@ -40,6 +40,31 @@
 #define DEFAULT_STEPMM      1.0f    /* mm       */
 #define DEFAULT_SPMM        80UL    /* steps/mm */
 
+/* ---- Parameter limits (validated in Stepper_SetParam) -------------- */
+/*                          min         max                             */
+#define PARAM_MIN_MMPSMAX   1.0f     /* mm/s    */
+#define PARAM_MAX_MMPSMAX   500.0f   /* mm/s    */
+#define PARAM_MIN_MMPSMIN   0.1f     /* mm/s    */
+#define PARAM_MAX_MMPSMIN   50.0f    /* mm/s    */
+#define PARAM_MIN_DVDTACC   1.0f     /* mm/s²   */
+#define PARAM_MAX_DVDTACC   5000.0f  /* mm/s²   */
+#define PARAM_MIN_DVDTDECC  1.0f     /* mm/s²   */
+#define PARAM_MAX_DVDTDECC  5000.0f  /* mm/s²   */
+#define PARAM_MIN_JOGMM     0.01f    /* mm      */
+#define PARAM_MAX_JOGMM     200.0f   /* mm      */
+#define PARAM_MIN_STEPMM    0.01f    /* mm      */
+#define PARAM_MAX_STEPMM    200.0f   /* mm      */
+#define PARAM_MIN_SPMM      1UL      /* steps/mm — 0 causes div-by-zero! */
+#define PARAM_MAX_SPMM      10000UL  /* steps/mm */
+#define PARAM_MIN_DIRINV    0UL
+#define PARAM_MAX_DIRINV    1UL
+#define PARAM_MIN_HOMESPD   0.1f     /* mm/s    */
+#define PARAM_MAX_HOMESPD   50.0f    /* mm/s    */
+#define PARAM_MIN_HOMEOFF   0UL      /* steps   */
+#define PARAM_MAX_HOMEOFF   50000UL  /* steps   */
+#define PARAM_MIN_DEBUG     0UL
+#define PARAM_MAX_DEBUG     0xFFUL
+
 #define MAX_RAMP_STEPS      512
 
 /* ---- State machine ------------------------------------------------- */

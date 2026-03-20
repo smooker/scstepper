@@ -169,19 +169,41 @@ void Stepper_DumpParams(void)
     printf("-----------------------------------------------\r\n");
 }
 
+/* Validate float param against [min,max]; print error and return 0 on failure */
+static int check_f(const char *name, float v, float mn, float mx)
+{
+    if (v < mn || v > mx) {
+        printf("err: %s out of range [%.3f, %.3f]\r\n", name, mn, mx);
+        return 0;
+    }
+    return 1;
+}
+
+/* Validate uint param against [min,max]; print error and return 0 on failure */
+static int check_u(const char *name, uint32_t v, uint32_t mn, uint32_t mx)
+{
+    if (v < mn || v > mx) {
+        printf("err: %s out of range [%lu, %lu]\r\n", name, mn, mx);
+        return 0;
+    }
+    return 1;
+}
+
 void Stepper_SetParam(const char *name, float value)
 {
-    if      (strcmp(name, "mmpsmax")  == 0) motorParams.mmpsmax.f  = value;
-    else if (strcmp(name, "mmpsmin")  == 0) motorParams.mmpsmin.f  = value;
-    else if (strcmp(name, "dvdtacc")  == 0) motorParams.dvdtacc.f  = value;
-    else if (strcmp(name, "dvdtdecc") == 0) motorParams.dvdtdecc.f = value;
-    else if (strcmp(name, "jogmm")    == 0) motorParams.jogmm.f    = value;
-    else if (strcmp(name, "stepmm")   == 0) motorParams.stepmm.f   = value;
-    else if (strcmp(name, "spmm")     == 0) motorParams.spmm.u     = (uint32_t)value;
-    else if (strcmp(name, "dirinv")   == 0) motorParams.dirinv.u   = (uint32_t)value;
-    else if (strcmp(name, "homespd")  == 0) motorParams.homespd.f  = value;
-    else if (strcmp(name, "homeoff")  == 0) motorParams.homeoff.u  = (uint32_t)value;
-    else if (strcmp(name, "debug")   == 0) motorParams.debug.u    = (uint32_t)value;
+    uint32_t uval = (value >= 0.0f) ? (uint32_t)value : 0;
+
+    if      (strcmp(name, "mmpsmax")  == 0) { if (!check_f(name, value, PARAM_MIN_MMPSMAX,  PARAM_MAX_MMPSMAX))  return; motorParams.mmpsmax.f  = value; }
+    else if (strcmp(name, "mmpsmin")  == 0) { if (!check_f(name, value, PARAM_MIN_MMPSMIN,  PARAM_MAX_MMPSMIN))  return; motorParams.mmpsmin.f  = value; }
+    else if (strcmp(name, "dvdtacc")  == 0) { if (!check_f(name, value, PARAM_MIN_DVDTACC,  PARAM_MAX_DVDTACC))  return; motorParams.dvdtacc.f  = value; }
+    else if (strcmp(name, "dvdtdecc") == 0) { if (!check_f(name, value, PARAM_MIN_DVDTDECC, PARAM_MAX_DVDTDECC)) return; motorParams.dvdtdecc.f = value; }
+    else if (strcmp(name, "jogmm")    == 0) { if (!check_f(name, value, PARAM_MIN_JOGMM,    PARAM_MAX_JOGMM))    return; motorParams.jogmm.f    = value; }
+    else if (strcmp(name, "stepmm")   == 0) { if (!check_f(name, value, PARAM_MIN_STEPMM,   PARAM_MAX_STEPMM))   return; motorParams.stepmm.f   = value; }
+    else if (strcmp(name, "spmm")     == 0) { if (!check_u(name, uval,  PARAM_MIN_SPMM,     PARAM_MAX_SPMM))     return; motorParams.spmm.u     = uval;  }
+    else if (strcmp(name, "dirinv")   == 0) { if (!check_u(name, uval,  PARAM_MIN_DIRINV,   PARAM_MAX_DIRINV))   return; motorParams.dirinv.u   = uval;  }
+    else if (strcmp(name, "homespd")  == 0) { if (!check_f(name, value, PARAM_MIN_HOMESPD,  PARAM_MAX_HOMESPD))  return; motorParams.homespd.f  = value; }
+    else if (strcmp(name, "homeoff")  == 0) { if (!check_u(name, uval,  PARAM_MIN_HOMEOFF,  PARAM_MAX_HOMEOFF))  return; motorParams.homeoff.u  = uval;  }
+    else if (strcmp(name, "debug")    == 0) { if (!check_u(name, uval,  PARAM_MIN_DEBUG,    PARAM_MAX_DEBUG))    return; motorParams.debug.u    = uval;  }
     else { printf("unknown param: %s\r\n", name); return; }
     printf("%s = %.3f\r\n", name, value);
 }

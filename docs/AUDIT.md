@@ -146,7 +146,7 @@ into an already-triggered endstop. Deliberate but risky.
 |---|-----------|--------|
 | 1 | Critical section in `Stepper_Stop()` | Prevents state corruption |
 | 2 | Atomic `evtFlags` read-clear | Prevents lost events |
-| 3 | Parameter validation (`spmm=0` = div by zero) | Prevents crash |
+| 3 | ~~Parameter validation (`spmm=0` = div by zero)~~ | **FIXED** 2026-03-20 |
 | 4 | Fix `Error_Handler` to use NOP loop | LED blinks as intended |
 | 5 | Replace `-O0` with `-Og` in Makefile | Better debug perf |
 | 6 | Remove `-dM` from CFLAGS (debug leftover) | Clean build output |
@@ -158,7 +158,7 @@ into an already-triggered endstop. Deliberate but risky.
 
 1. ~~**evtFlags race**~~ — **FIXED** 2026-03-20
 2. **Stepper_Stop() critical section** — state machine corruption
-3. **Parameter validation** — division by zero on `spmm=0`
+3. ~~**Parameter validation**~~ — **FIXED** 2026-03-20
 4. **Error_Handler** — use NOP loop instead of HAL_Delay
 
 ---
