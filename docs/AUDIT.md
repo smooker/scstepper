@@ -49,24 +49,14 @@ priority 0. Same-priority ISRs cannot preempt each other on Cortex-M4 — this m
 Analytic `decelSteps` clamped to `decelSize` after recalculation:
 `if (decelSteps > decelSize) decelSteps = decelSize;`
 
-### 7. dashTime macro missing parentheses (defines.h)
+### 7. dashTime macro missing parentheses — **FIXED**
 
-```c
-#define dashTime  3*dotTime
-```
+`#define dashTime (3*dotTime)` and `spaceTime (7*dotTime)` — parentheses added.
 
-In expression `dashTime + 1` → `3*60 + 1 = 181`, not `3*61`.
+### 8. Busy-wait in ISR — **FIXED**
 
-**Fix:** `#define dashTime (3*dotTime)`
-
-### 8. Busy-wait in ISR (stepper.c:389)
-
-```c
-while (__HAL_TIM_GET_COUNTER(stepTim) <= ccr + 10);
-```
-
-Short spin (~100ns at 96MHz), but if counter wraps, theoretical risk of spinning
-for a full 32-bit TIM2 period (~44 seconds).
+`target` clamped to `ARR` before the spin: `if (target > arr) target = arr;`
+Prevents infinite spin if counter wraps at end of period.
 
 ## Safety Concerns (CNC Motor Control)
 

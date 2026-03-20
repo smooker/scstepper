@@ -511,8 +511,11 @@ void Stepper_ISR(void)
 
     if (stepsRemaining == 0)
     {
-        uint32_t ccr = __HAL_TIM_GET_COMPARE(stepTim, TIM_CHANNEL_3);
-        while (__HAL_TIM_GET_COUNTER(stepTim) <= ccr + 10);
+        uint32_t ccr    = __HAL_TIM_GET_COMPARE(stepTim, TIM_CHANNEL_3);
+        uint32_t arr    = __HAL_TIM_GET_AUTORELOAD(stepTim);
+        uint32_t target = ccr + 10;
+        if (target > arr) target = arr;  /* prevent infinite spin on counter wrap */
+        while (__HAL_TIM_GET_COUNTER(stepTim) <= target);
 
         /* set idle state LOW before disabling channel */
         stepTim->Instance->CR2 &= ~TIM_CR2_OIS3;  /* OIS3 = output idle state CH3 = 0 = LOW */

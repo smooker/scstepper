@@ -67,8 +67,8 @@ typedef enum {
 
 #define dotTime       60
 #define interTime     dotTime
-#define dashTime      3*dotTime
-#define spaceTime     7*dotTime
+#define dashTime      (3*dotTime)
+#define spaceTime     (7*dotTime)
 
 void dot();
 void dash();
