@@ -844,6 +844,10 @@ int main(void)
   // USB enumeration
   HAL_Delay(1200);
 
+  /* seed GPIO snapshots — before any EXTI fires, so ProcessLine sees real pin state */
+  snapA = GPIOA->IDR;
+  snapB = GPIOB->IDR;
+
   /* clear RX ring buffer and line buffer */
   rxHead  = 0;
   rxTail  = 0;
