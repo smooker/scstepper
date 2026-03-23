@@ -558,10 +558,9 @@ static void TxDrain(void)
     }
 
     txBusy = 1;
-    if (CDC_Transmit_FS(txChunk, n) == USBD_OK) {
-        txTail = tail;  /* advance tail only on success */
-    } else {
-        txBusy = 0;     /* failed — retry on next call */
+    txTail = tail;  /* advance tail BEFORE transmit — prevents ISR re-send race */
+    if (CDC_Transmit_FS(txChunk, n) != USBD_OK) {
+        txBusy = 0;     /* transmit failed — data lost (USB link broken anyway) */
     }
 }
 
