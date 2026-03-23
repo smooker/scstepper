@@ -196,7 +196,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 static void MX_TIM9_Init(void);  /* debounce timer — survives CubeMX regen here */
-static volatile uint32_t tim9Ms; /* forward decl — defined+init'd near debounce code below */
+static volatile uint32_t tim9Ms = 0;  /* 1ms tick from TIM9 ISR — used everywhere */
 void SafeState_And_Blink(void);
 void ProcessEvents(void);
 void RunHome(void);
@@ -542,13 +542,17 @@ void My_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd)
 }
 
 /* Copy up to 64 bytes from ring into txChunk and fire CDC_Transmit_FS.
- * Called from _write (main) and DataInCallback (ISR) — txBusy serializes. */
+ * Called from _write (main) and DataInCallback (ISR) — txBusy serializes.
+ * Critical section around test-and-set prevents ISR re-entrancy race. */
 static void TxDrain(void)
 {
-    if (txBusy) return;
+    __disable_irq();
+    if (txBusy) { __enable_irq(); return; }
     uint16_t head = txHead;
     uint16_t tail = txTail;
-    if (head == tail) return;  /* nothing to send */
+    if (head == tail) { __enable_irq(); return; }
+    txBusy = 1;
+    __enable_irq();
 
     /* copy contiguous chunk from ring (up to 64 bytes = USB FS max packet) */
     uint16_t n = 0;
@@ -557,7 +561,6 @@ static void TxDrain(void)
         tail = (tail + 1) & TX_RING_MASK;
     }
 
-    txBusy = 1;
     txTail = tail;  /* advance tail BEFORE transmit — prevents ISR re-send race */
     if (CDC_Transmit_FS(txChunk, n) != USBD_OK) {
         txBusy = 0;     /* transmit failed — data lost (USB link broken anyway) */
@@ -1296,10 +1299,7 @@ static volatile uint32_t jogPressTickR = 0;
 
 /* snapA/snapB declared at top of file — written here, read everywhere */
 
-/* TIM9 millisecond counter — own tick source, independent of SysTick/HAL_GetTick.
- * Incremented in TIM1_BRK_TIM9_IRQHandler every 1 ms.
- * Used as 'now' in HAL_GPIO_EXTI_Callback so both EXTI and TIM9 share one time base. */
-static volatile uint32_t tim9Ms = 0;
+/* tim9Ms — defined at top of file (line ~199), incremented here every 1 ms */
 
 /* ============================================================
  * Button debounce — two-phase design:
