@@ -285,7 +285,12 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
         return (USBD_OK);
     }
 
-  MyCDC_Receive_FS(Buf, Len);
+  /* Push received bytes into RX ring buffer (main.c) */
+  for (uint32_t i = 0; i < *Len; i++)
+  {
+      uint16_t next = (rxHead + 1) & RX_RING_MASK;
+      if (next != rxTail) { rxRing[rxHead] = Buf[i]; rxHead = next; }
+  }
 
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);

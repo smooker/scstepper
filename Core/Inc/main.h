@@ -79,7 +79,13 @@ void Error_Handler(void);
 /* USER CODE BEGIN EFP */
 
 // uint8_t cdcprintf(const char *format, ... );
-void MyCDC_Receive_FS(uint8_t *Buff, uint32_t *Len);
+
+/* RX ring buffer — defined in main.c, written by CDC_Receive_FS (usbd_cdc_if.c) */
+#define RX_RING_SIZE  512
+#define RX_RING_MASK  (RX_RING_SIZE - 1)
+extern uint8_t           rxRing[RX_RING_SIZE];
+extern volatile uint16_t rxHead;
+extern volatile uint16_t rxTail;
 
 /* USER CODE END EFP */
 

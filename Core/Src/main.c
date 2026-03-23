@@ -73,7 +73,8 @@ typedef enum {
 void dot();
 void dash();
 uint8_t morse(const char *format, ... );
-uint8_t CDC_TxWrite(const uint8_t *data, uint16_t len);
+uint16_t TxWrite(const uint8_t *data, uint16_t len);
+static void TxDrain(void);
 
 /* USER CODE END PD */
 
@@ -120,17 +121,19 @@ static uint8_t mrsSymIdx  = 0;
 static uint32_t mrsTick   = 0;
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
-//
-#define CDC_TX_BUF_SIZE  512
-static uint8_t UserTxBufferFS[CDC_TX_BUF_SIZE];
-static volatile uint16_t txLen   = 0;
-static volatile uint8_t  txBusy  = 0;
+/* ---- TX ring buffer --------------------------------------------------- */
+#define TX_RING_SIZE  1024          /* must be power of 2 */
+#define TX_RING_MASK  (TX_RING_SIZE - 1)
+static uint8_t  txRing[TX_RING_SIZE];
+static volatile uint16_t txHead = 0;   /* _write pushes here (main context) */
+static volatile uint16_t txTail = 0;   /* TxDrain reads from here           */
+static uint8_t  txChunk[64];           /* USB FS max packet = 64 bytes      */
+static volatile uint8_t txBusy = 0;    /* 1 = CDC_Transmit_FS in flight     */
 
 //
-#define CDC_RX_BUF_SIZE  512
-static uint8_t UserRxBufferFS[CDC_RX_BUF_SIZE];
-static volatile uint16_t rxHead = 0;
-static volatile uint16_t rxTail = 0;
+uint8_t rxRing[RX_RING_SIZE];
+volatile uint16_t rxHead = 0;
+volatile uint16_t rxTail = 0;
 //
 extern uint8_t CDC_IsConnected;
 
@@ -193,6 +196,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 static void MX_TIM9_Init(void);  /* debounce timer — survives CubeMX regen here */
+static volatile uint32_t tim9Ms; /* forward decl — defined+init'd near debounce code below */
 void SafeState_And_Blink(void);
 void ProcessEvents(void);
 void RunHome(void);
@@ -341,7 +345,7 @@ void MorseStart(const char *text)
     mrsCharIdx = 0;
     mrsSymIdx  = 0;
     mrsState   = MRS_LETTER;  /* will pick first char on next update */
-    mrsTick    = HAL_GetTick();
+    mrsTick    = tim9Ms;
 }
 
 uint8_t MorseIsBusy(void) { return mrsState != MRS_IDLE; }
@@ -349,7 +353,7 @@ uint8_t MorseIsBusy(void) { return mrsState != MRS_IDLE; }
 void MorseUpdate(void)
 {
     if (mrsState == MRS_IDLE) return;
-    uint32_t now = HAL_GetTick();
+    uint32_t now = tim9Ms;
     uint32_t elapsed = now - mrsTick;
 
     switch (mrsState)
@@ -434,32 +438,31 @@ void MorseUpdate(void)
     }
 }
 
+/* Push bytes into TX ring buffer, kick USB if idle.
+ * Blocks only when ring is full (with 100ms timeout). */
 int _write(int file, char *ptr, int len)
 {
     UNUSED(file);
 
-    USBD_CDC_HandleTypeDef *hcdc =
-        (USBD_CDC_HandleTypeDef *)hUsbDeviceFS.pClassData;
+    int sent = 0;
+    uint32_t timeout = tim9Ms;
 
-    /* wait until TX is free */
-    uint32_t timeout = HAL_GetTick();
-    while (hcdc->TxState != 0)
-    {
-        if (HAL_GetTick() - timeout > 100)  /* 100ms timeout — avoid infinite hang */
-            return 0;
+    while (sent < len) {
+        uint16_t next = (txHead + 1) & TX_RING_MASK;
+        if (next == txTail) {
+            /* ring full — kick drain and spin until space or timeout */
+            TxDrain();
+            if (tim9Ms - timeout > 100) return sent;
+            continue;
+        }
+        txRing[txHead] = (uint8_t)ptr[sent];
+        txHead = next;
+        sent++;
+        timeout = tim9Ms;  /* reset timeout on progress */
     }
 
-    CDC_Transmit_FS((uint8_t *)ptr, len);
-
-    /* wait for this transmission to complete before returning */
-    timeout = HAL_GetTick();
-    while (hcdc->TxState != 0)
-    {
-        if (HAL_GetTick() - timeout > 100)
-            return 0;
-    }
-
-    return len;
+    TxDrain();  /* kick USB if idle */
+    return sent;
 }
 
 // Morse code transmitter
@@ -538,57 +541,57 @@ void My_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd)
     USBD_LL_DevDisconnected((USBD_HandleTypeDef *)hpcd->pData);
 }
 
-//
-static void TxStart(void)
+/* Copy up to 64 bytes from ring into txChunk and fire CDC_Transmit_FS.
+ * Called from _write (main) and DataInCallback (ISR) — txBusy serializes. */
+static void TxDrain(void)
 {
-    if (txBusy || txLen == 0) return;
+    if (txBusy) return;
+    uint16_t head = txHead;
+    uint16_t tail = txTail;
+    if (head == tail) return;  /* nothing to send */
+
+    /* copy contiguous chunk from ring (up to 64 bytes = USB FS max packet) */
+    uint16_t n = 0;
+    while (tail != head && n < sizeof(txChunk)) {
+        txChunk[n++] = txRing[tail];
+        tail = (tail + 1) & TX_RING_MASK;
+    }
+
     txBusy = 1;
-    /* txLen intentionally NOT cleared here — buffer must stay valid */
-    uint8_t result = CDC_Transmit_FS(UserTxBufferFS, txLen);
-    if (result == USBD_OK)
-    {
-        txBusy = 1;
-        txLen  = 0;
+    if (CDC_Transmit_FS(txChunk, n) == USBD_OK) {
+        txTail = tail;  /* advance tail only on success */
+    } else {
+        txBusy = 0;     /* failed — retry on next call */
     }
 }
 
-//
-void MyCDC_Receive_FS(uint8_t *Buf, uint32_t *Len)
-{
-    for (uint32_t i = 0; i < *Len; i++)
-    {
-        uint16_t next = (rxHead + 1) % CDC_RX_BUF_SIZE;
-        if (next != rxTail)
-        {
-            UserRxBufferFS[rxHead] = Buf[i];
-            rxHead = next;
-        }
-    }
-}
 
-/* Read one byte from RX buffer. Call CDC_RxAvailable() first. */
-uint8_t CDC_RxAvailable(void)
+/* Read one byte from RX buffer. Call RxAvailable() first. */
+uint8_t RxAvailable(void)
 {
     return rxHead != rxTail;
 }
 
-uint8_t CDC_RxRead(void)
+uint8_t RxRead(void)
 {
-    uint8_t byte = UserRxBufferFS[rxTail];
-    rxTail = (rxTail + 1) % CDC_RX_BUF_SIZE;
+    uint8_t byte = rxRing[rxTail];
+    rxTail = (rxTail + 1) & RX_RING_MASK;
     return byte;
 }
 
-/* Queue bytes for async TX. Returns 0 if TX buffer full. */
-uint8_t CDC_TxWrite(const uint8_t *data, uint16_t len)
+/* Queue bytes into TX ring. Returns number of bytes actually queued.
+ * Non-blocking — drops bytes if ring is full. */
+uint16_t TxWrite(const uint8_t *data, uint16_t len)
 {
-    if (txBusy || (txLen + len) > CDC_TX_BUF_SIZE)
-        return 0; /* busy or won't fit */
-
-    memcpy(&UserTxBufferFS[txLen], data, len);
-    txLen += len;
-    TxStart();
-    return 1;
+    uint16_t sent = 0;
+    while (sent < len) {
+        uint16_t next = (txHead + 1) & TX_RING_MASK;
+        if (next == txTail) break;  /* ring full */
+        txRing[txHead] = data[sent++];
+        txHead = next;
+    }
+    TxDrain();
+    return sent;
 }
 
 // DataIn is from DEVICE to HOST
@@ -599,9 +602,8 @@ void MyPCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum)
 
     if (epnum == 0x01)
     {
-        txLen  = 0;   // ← clear here, AFTER hardware is done with the buffer
         txBusy = 0;
-        TxStart();    // send next chunk if queued in the meantime
+        TxDrain();    /* send next chunk from ring if available */
     }
 }
 
@@ -873,16 +875,16 @@ int main(void)
       printf("\r\n*** EEPROM blank — motor DISABLED until answered ***\r\n");
       printf("*** Init with defaults? [y/n]                    ***\r\n");
       char ans = 0;
-      uint32_t dotTick = HAL_GetTick();
+      uint32_t dotTick = tim9Ms;
       while (1) {
           if (rxHead != rxTail) {
-              ans = (char)UserRxBufferFS[rxTail];
-              rxTail = (rxTail + 1) % CDC_RX_BUF_SIZE;
+              ans = (char)rxRing[rxTail];
+              rxTail = (rxTail + 1) & RX_RING_MASK;
               if (ans == 'y' || ans == 'Y' || ans == 'n' || ans == 'N') break;
           }
-          if (HAL_GetTick() - dotTick >= 1000) {
+          if (tim9Ms - dotTick >= 1000) {
               printf("  waiting for [y/n]...\r\n");
-              dotTick = HAL_GetTick();
+              dotTick = tim9Ms;
           }
       }
       if (ans == 'y' || ans == 'Y') {
@@ -914,7 +916,7 @@ int main(void)
     /* Heartbeat LED — toggle every 500ms */
     {
         static uint32_t ledTick = 0;
-        uint32_t now = HAL_GetTick();
+        uint32_t now = tim9Ms;
         if (now - ledTick >= 500) {
             ledTick = now;
             HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin);
@@ -948,10 +950,10 @@ int main(void)
         static uint32_t bootTick = 0;
         switch (bootPhase) {
         case 0: /* wait for Z to finish */
-            if (!MorseIsBusy()) { bootTick = HAL_GetTick(); bootPhase = 1; }
+            if (!MorseIsBusy()) { bootTick = tim9Ms; bootPhase = 1; }
             break;
         case 1: /* 3s delay */
-            if (HAL_GetTick() - bootTick >= 3000) bootPhase = 2;
+            if (tim9Ms - bootTick >= 3000) bootPhase = 2;
             break;
         case 2: { /* check all inputs — active LOW = stuck */
             uint8_t stuck = 0;
@@ -971,10 +973,10 @@ int main(void)
             break;
         }
         case 3: /* wait CQ to finish */
-            if (!MorseIsBusy()) { bootTick = HAL_GetTick(); bootPhase = 4; }
+            if (!MorseIsBusy()) { bootTick = tim9Ms; bootPhase = 4; }
             break;
         case 4: /* pause 2s then re-check */
-            if (HAL_GetTick() - bootTick >= 2000) bootPhase = 2;
+            if (tim9Ms - bootTick >= 2000) bootPhase = 2;
             break;
         case 5: /* wait OK to finish */
             if (!MorseIsBusy()) { buttonsEn = 1; printf("\r\nbuttons enabled\r\n"); PrintPrompt(); bootPhase = 6; }
@@ -986,13 +988,13 @@ int main(void)
     /* Buzzer: handle request from ISR (only if morse not active) */
     if (buzzRequest && !MorseIsBusy()) {
         HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
-        buzzTick = HAL_GetTick();
+        buzzTick = tim9Ms;
         buzzActive = 1;
         buzzRequest = 0;
     }
 
     /* Buzzer off after 50ms */
-    if (buzzActive && (HAL_GetTick() - buzzTick >= 50)) {
+    if (buzzActive && (tim9Ms - buzzTick >= 50)) {
         HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_SET);
         buzzActive = 0;
     }
@@ -1001,9 +1003,9 @@ int main(void)
     ProcessEvents();
 
     /* Drain RX buffer */
-    while (CDC_RxAvailable())
+    while (RxAvailable())
     {
-        uint8_t b = CDC_RxRead();
+        uint8_t b = RxRead();
 
         KeyCode key = ParseKey(b);
 
@@ -1291,12 +1293,17 @@ static volatile uint32_t jogPressTickR = 0;
 
 /* snapA/snapB declared at top of file — written here, read everywhere */
 
+/* TIM9 millisecond counter — own tick source, independent of SysTick/HAL_GetTick.
+ * Incremented in TIM1_BRK_TIM9_IRQHandler every 1 ms.
+ * Used as 'now' in HAL_GPIO_EXTI_Callback so both EXTI and TIM9 share one time base. */
+static volatile uint32_t tim9Ms = 0;
+
 /* ============================================================
  * Button debounce — two-phase design:
  *
  *   Phase 1 — EXTI ISR (hardware edge, may be bouncing):
  *     EVT_DB_x == 0  →  first edge → arm: lastTick = now, set EVT_DB_x, return
- *     EVT_DB_x == 1  →  bounce within window → ignore (SysTick is already watching)
+ *     EVT_DB_x == 1  →  bounce within window → ignore (TIM9 is already watching)
  *
  *   Phase 2 — TIM1_BRK_TIM9_IRQHandler (TIM9 free-running, 1 ms period):
  *     When EVT_DB_x is set and debounce window has expired:
@@ -1307,15 +1314,15 @@ static volatile uint32_t jogPressTickR = 0;
  * EVT_DB_x acts as the state machine discriminator:
  *   0 = idle      1+fresh edge = arming     1+time expired = settled → fire
  *
- * "HAL_GPIO_EXTI_Callback is just a function at an address — SysTick can
+ * "HAL_GPIO_EXTI_Callback is just a function at an address — TIM9 ISR can
  *  branch to it exactly as the NVIC does.  LL thinking, not HAL thinking." — smooker
  * ============================================================ */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    /* Snapshot first — one consistent read per port; now after */
+    /* Snapshot first — one consistent read per port; now from TIM9 (not SysTick) */
     snapA = GPIOA->IDR;
     snapB = GPIOB->IDR;
-    uint32_t now = HAL_GetTick();
+    uint32_t now = tim9Ms;
 
     switch (GPIO_Pin)
     {
@@ -1401,19 +1408,28 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         }
         break;
 
-    /* ---- Step buttons: two-phase debounce, press only ---- */
+    /* ---- Step buttons: two-phase debounce, press only.
+     * Arm on press edge (LOW) only — release edge ignored.
+     * Lockout guard in arm phase: only arm if outside DEBOUNCE_MS window
+     * since last confirmation — prevents release bounces from re-arming and
+     * causing a second step+beep on button release.
+     * TIM9 confirms after DEBOUNCE_MS; pin may be HIGH by then (quick tap) —
+     * irrelevant, the press was recorded at arm time. ---- */
     case BUTT_STEPL_Pin:
         if (!buttonsEn) break;
         if (evtFlags & EVT_DB_STEPL) {
             if (now - lastTick_stepL >= DEBOUNCE_MS) {
                 evtFlags &= ~EVT_DB_STEPL;
                 lastTick_stepL = now;
-                if (!(snapB & BUTT_STEPL_Pin) && (snapA & ES_L_Pin))
+                if (snapA & ES_L_Pin)        /* ES_L not active */
                     evtFlags |= EVT_STEPL;
             }
         } else {
-            lastTick_stepL = now;
-            evtFlags |= EVT_DB_STEPL;
+            if (!(snapB & BUTT_STEPL_Pin) &&          /* LOW = press */
+                (now - lastTick_stepL >= DEBOUNCE_MS)) { /* outside lockout */
+                lastTick_stepL = now;
+                evtFlags |= EVT_DB_STEPL;
+            }
         }
         break;
 
@@ -1423,12 +1439,15 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
             if (now - lastTick_stepR >= DEBOUNCE_MS) {
                 evtFlags &= ~EVT_DB_STEPR;
                 lastTick_stepR = now;
-                if (!(snapB & BUTT_STEPR_Pin) && (snapA & ES_R_Pin))
+                if (snapA & ES_R_Pin)        /* ES_R not active */
                     evtFlags |= EVT_STEPR;
             }
         } else {
-            lastTick_stepR = now;
-            evtFlags |= EVT_DB_STEPR;
+            if (!(snapB & BUTT_STEPR_Pin) &&          /* LOW = press */
+                (now - lastTick_stepR >= DEBOUNCE_MS)) { /* outside lockout */
+                lastTick_stepR = now;
+                evtFlags |= EVT_DB_STEPR;
+            }
         }
         break;
 
@@ -1446,7 +1465,9 @@ void TIM1_BRK_TIM9_IRQHandler(void)
     if (!(TIM9->SR & TIM_SR_UIF)) return;
     TIM9->SR = ~TIM_SR_UIF;   /* clear update interrupt flag */
 
-    uint32_t now = HAL_GetTick();
+    tim9Ms++;                  /* advance our own 1 ms tick — no SysTick involved */
+    uint32_t now = tim9Ms;
+
     if ((evtFlags & EVT_DB_JOGL)  && (now - lastTick_jogL  >= DEBOUNCE_REL_MS)) {
         snapA = GPIOA->IDR; snapB = GPIOB->IDR;
         HAL_GPIO_EXTI_Callback(BUTT_JOGL_Pin);
@@ -1491,8 +1512,8 @@ void RunHomeEx(uint8_t fromButtons)
 #define HOME_ABORT_CHECK(stop_motor) \
     if (fromButtons) { \
         if (!HomeButtonsHeld()) { \
-            if (!homePressLost) homePressLost = HAL_GetTick() | 1; \
-            else if (HAL_GetTick() - homePressLost >= HOME_RELEASE_MS) { \
+            if (!homePressLost) homePressLost = tim9Ms | 1; \
+            else if (tim9Ms - homePressLost >= HOME_RELEASE_MS) { \
                 if (stop_motor) { Stepper_Stop(); while (Stepper_IsBusy()) { HAL_Delay(5); } } \
                 goto home_restore; \
             } \
@@ -1525,8 +1546,8 @@ void RunHomeEx(uint8_t fromButtons)
         if (dbg) printf("home: ES_L confirmed, settling...\r\n");
 
         /* Phase 2: settle — 500ms, abort-checked every 10ms */
-        uint32_t settleEnd = HAL_GetTick() + 500;
-        while (HAL_GetTick() < settleEnd) {
+        uint32_t settleEnd = tim9Ms + 500;
+        while (tim9Ms < settleEnd) {
             HOME_ABORT_CHECK(0)
             HAL_Delay(10);
         }
@@ -1655,7 +1676,7 @@ void RunCombo(void)
 /* Called from main loop — safe to printf here */
 void ProcessEvents(void)
 {
-    uint32_t now = HAL_GetTick();
+    uint32_t now = tim9Ms;  /* same time base as jogPressTick* set in EXTI callback */
     __disable_irq();
     uint32_t flags = evtFlags & ~(EVT_DB_JOGL|EVT_DB_JOGR|EVT_DB_STEPL|EVT_DB_STEPR);
     evtFlags &= ~flags;  /* clear only real events — EVT_DB_* stay for TIM9 to consume */
@@ -1722,13 +1743,11 @@ void ProcessEvents(void)
     /* ---- Step buttons ---- */
     if (flags & EVT_STEPL) {
         if (diagMode) { printf("BUTT_STEPL snapB=%08lx\r\n", snapB); PrintPrompt(); }
-        else if (!(snapB & BUTT_STEPL_Pin)) { /* button released by now — ignore */ }
         else if (!(snapA & ES_L_Pin)) { /* ES_L active = blocked */ }
         else { buzzRequest = 1; Stepper_Move(-motorParams.stepmm.f); }
     }
     if (flags & EVT_STEPR) {
         if (diagMode) { printf("BUTT_STEPR snapB=%08lx\r\n", snapB); PrintPrompt(); }
-        else if (!(snapB & BUTT_STEPR_Pin)) { /* button released by now — ignore */ }
         else if (!(snapA & ES_R_Pin)) { /* ES_R active = blocked */ }
         else { buzzRequest = 1; Stepper_Move(motorParams.stepmm.f); }
     }
