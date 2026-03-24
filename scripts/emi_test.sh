@@ -10,7 +10,7 @@
 #   - Sentinel file pattern for async abort
 
 PORT=/dev/ttyACMTarg
-GDB_PORT=/dev/ttyBMPGDB
+GDB_PORT=/dev/ttyBmpGdb
 PTY=/tmp/emi_pty
 LOG=/home/claude-agent/work/claude2smooker/emi_test.log
 FLAG=/home/claude-agent/work/claude2smooker/emi_stop.flag

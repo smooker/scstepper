@@ -11,7 +11,7 @@ stepper driver during motion.
 - Target flashed with current firmware (diag mode + debug bit0 support)
 - Minicom closed — serial port free for socat
 - GDB free — used only for reset if needed
-- BMP GDB port accessible at `/dev/ttyBMPGDB`
+- BMP GDB port accessible at `/dev/ttyBmpGdb`
 
 ## Pre-flight checks (script must verify before starting)
 
@@ -26,7 +26,7 @@ pgrep -f "arm-none-eabi-gdb" && { echo "ABORT: GDB is running"; exit 1; }
 [ -e /dev/ttyACMTarg ] || { echo "ABORT: /dev/ttyACMTarg not found"; exit 1; }
 
 # 4. BMP GDB port exists (needed for hard reset + escalation)
-[ -e /dev/ttyBMPGDB ] || { echo "ABORT: /dev/ttyBMPGDB not found"; exit 1; }
+[ -e /dev/ttyBmpGdb ] || { echo "ABORT: /dev/ttyBmpGdb not found"; exit 1; }
 ```
 
 ## Procedure
