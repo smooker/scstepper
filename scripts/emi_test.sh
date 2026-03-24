@@ -21,10 +21,20 @@ RANGE_WAIT=25
 RESET_COUNT_FILE=""
 
 # --- Pre-flight checks ---
-pidof minicom >/dev/null && { echo "ABORT: minicom is running — close it first"; exit 1; }
-pidof arm-none-eabi-gdb >/dev/null && { echo "ABORT: GDB is running — detach first"; exit 1; }
+pgrep -f "minicom.*ttyACM" >/dev/null && { echo "ABORT: minicom is running on ttyACM — close it first"; exit 1; }
+pgrep -f "arm-none-eabi-gdb" >/dev/null && { echo "ABORT: GDB is running — detach first"; exit 1; }
 [ -e "$PORT" ] || { echo "ABORT: $PORT not found — is target connected?"; exit 1; }
 [ -e "$GDB_PORT" ] || { echo "ABORT: $GDB_PORT not found — is BMP connected?"; exit 1; }
+
+# Kill stale socat from previous run (matching our PTY or PORT)
+if pgrep -f "socat.*$PTY" >/dev/null || pgrep -f "socat.*$PORT" >/dev/null; then
+    echo "WARNING: killing stale socat from previous run"
+    pkill -f "socat.*$PTY" 2>/dev/null
+    pkill -f "socat.*$PORT" 2>/dev/null
+    sleep 1
+fi
+# Remove stale PTY symlink
+rm -f "$PTY" "${PTY}.lock"
 
 RESET_COUNT_FILE=$(mktemp /tmp/emi_reset_count.XXXXXX)
 echo 0 > "$RESET_COUNT_FILE"
