@@ -1,0 +1,30 @@
+params ok
+  stepper init ok
+
+===============================================
+  stepper_sc  60c5ae5-dirty  2026-03-23_15:30
+  STM32F411CEU6 @ 96 MHz
+  type 'help' for commands
+===============================================
+
+-----------------------------------------------
+  mmpsmax........:   1.000 mm/s
+  mmpsmin........:   0.500 mm/s
+  dvdtacc........:  50.000 mm/s2
+  dvdtdecc.......: 100.000 mm/s2
+  jogmm..........:   0.200 mm
+  stepmm.........:   1.000 mm
+  spmm...........:     400 steps/mm
+  dirinv.........:       1 (inverted)
+  homespd........:   0.500 mm/s
+  homeoff........:      10 steps
+  debug..........: 0x0000
+-----------------------------------------------
+  pulse_ticks....: 5000
+  min_period.....: 240000 ticks (1.0 mm/s)
+  max_period.....: 480000 ticks (0.5 mm/s)
+-----------------------------------------------
+  EEPROM OK — params loaded from flash
+XXXX.XX >
+buttons enabled
+XXXX.XX >
