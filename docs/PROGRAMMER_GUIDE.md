@@ -305,17 +305,29 @@ buttons enabled
 - `stepper.c` — physics: ramp table generation, ISR (TIM2), EEPROM R/W, parameter validation
 - `main.c` — everything else: CDC CLI, button/endstop EXTI, jog state machine, homing
 
-### Single source of truth for GPIO
-All GPIO pin state decisions use **snapshots taken at EXTI ISR entry**:
+### SPT — Single Point of Truth for GPIO
+
+`snapA`/`snapB` are the **single point of truth** for all GPIO pin state.
+Only ISR context reads the hardware IDR registers — all other code
+(ProcessLine, main loop, CDC commands) reads `snapA`/`snapB`.
+
 ```c
 volatile uint32_t snapA;  // GPIOA IDR — ES_L, ES_R, JOGL, JOGR
 volatile uint32_t snapB;  // GPIOB IDR — STEPL, STEPR
 ```
-Seeded from `GPIOA->IDR` / `GPIOB->IDR` at boot (before main loop),
-then updated on every EXTI event and TIM9 debounce confirmation.
 
-**Never add a new `HAL_GPIO_ReadPin()` call** outside the boot stuck-input
-check. Use `snapA`/`snapB`.
+**Who writes:**
+| When | Where | Why |
+|------|-------|-----|
+| Boot (once) | before main loop | Seed — so snapA is not zero before first EXTI |
+| Every EXTI edge | `HAL_GPIO_EXTI_Callback` entry | Fresh snapshot for button/endstop logic |
+| TIM9 debounce confirm | `TIM1_BRK_TIM9_IRQHandler` | Fresh snapshot before re-entering callback |
+
+**Rules:**
+- **Never** read `GPIOA->IDR` or `GPIOB->IDR` outside ISR context — use `snapA`/`snapB`
+- **Never** add `HAL_GPIO_ReadPin()` calls — use `snapA & PIN` / `snapB & PIN`
+- If snapshots seem stale, fix the refresh mechanism (boot seed, periodic update)
+  — do NOT bypass by reading IDR directly
 
 ### ISR safety
 TIM2 ISR and all EXTI ISRs share `stepsRemaining`, `decelIndex`, `stepperState`.
@@ -402,9 +414,10 @@ Removing a C variable from firmware does not break `.gdb`/`.py` files —
 those only fail at runtime when you run the specific GDB command.
 `make clean` does not help. `make check` does.
 
-### snapshots beat live reads
+### SPT: snapshots beat live reads
 Multiple `HAL_GPIO_ReadPin()` calls at different points in time can give
-inconsistent state. Take one IDR snapshot at ISR entry, use it everywhere.
+inconsistent state. The SPT rule (§10): only ISR reads IDR into `snapA`/`snapB`,
+everyone else reads the cached snapshot. One place writes, everyone reads.
 
 ### Shadow flags hide hardware state
 `esBlocked` was a software flag that duplicated information already in
