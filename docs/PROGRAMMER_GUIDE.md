@@ -163,11 +163,14 @@ Ctrl+C      — halt
 ### GDB convenience commands
 | Command | Description |
 |---------|-------------|
-| `st` | Motor state: stepperState, posSteps, posHomed, range, semaphore |
+| `st` | Key state: stepperState, posSteps, posHomed, range, snapA/B, txBusy, tim9Ms |
 | `params` | All motor parameters (mirrors CDC `params` command) |
-| `rxbuf` | CDC RX ring buffer occupancy + raw bytes |
+| `rxbuf` | CDC RX ring buffer (rxHead/rxTail/pending + first 64 bytes of rxRing) |
+| `txbuf` | CDC TX ring buffer (txHead/txTail/txBusy/pending + txRing + txChunk) |
 | `mem_regions` | STM32F411 memory map |
-| `inject COMMAND` | Write command into CDC RX buffer; firmware executes on `c` |
+| `inject COMMAND` | Write command into rxRing; firmware executes on `c` |
+| `fwcheck` | Verify running flash matches ELF on disk (compare-sections) |
+| `eecheck` | Check EEPROM emulation region (page status + eepromStatus) |
 | `pr` | Dump EEPROM flash pages raw (debug EEPROM layout) |
 
 **`inject` example** — test a command without typing in minicom:
@@ -176,6 +179,23 @@ inject set mmpsmax 80
 c
 ```
 Firmware processes it on the next main-loop tick.
+
+**`inject` + EMI diagnostics** — exercise motor while monitoring endstop events:
+```gdb
+inject di
+inject set debug 1
+c
+# ... let firmware enable diag mode ...
+# Ctrl+C
+inject moveto 3.13
+c
+# ... wait for move to complete ...
+# Ctrl+C
+inject moveto 0
+c
+```
+With `diagMode ON` + `debug bit0`: endstop events print `ES_L hit` / `ES_R hit`
+but do NOT stop the motor — safe for EMI diagnosis during motion.
 
 ---
 
@@ -288,11 +308,11 @@ buttons enabled
 ### Single source of truth for GPIO
 All GPIO pin state decisions use **snapshots taken at EXTI ISR entry**:
 ```c
-volatile uint32_t snapA = 0;  // GPIOA IDR — ES_L, ES_R, JOGL, JOGR
-volatile uint32_t snapB = 0;  // GPIOB IDR — STEPL, STEPR
+volatile uint32_t snapA;  // GPIOA IDR — ES_L, ES_R, JOGL, JOGR
+volatile uint32_t snapB;  // GPIOB IDR — STEPL, STEPR
 ```
-Written once in `HAL_GPIO_EXTI_Callback`, read everywhere else.
-`HAL_GPIO_ReadPin()` is only used at boot (before EXTI is active, snapA=0).
+Seeded from `GPIOA->IDR` / `GPIOB->IDR` at boot (before main loop),
+then updated on every EXTI event and TIM9 debounce confirmation.
 
 **Never add a new `HAL_GPIO_ReadPin()` call** outside the boot stuck-input
 check. Use `snapA`/`snapB`.
@@ -495,4 +515,4 @@ See `docs/TODO.md` for full details:
 
 ---
 
-*Last updated: 2026-03-20*
+*Last updated: 2026-03-24*

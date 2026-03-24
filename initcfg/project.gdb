@@ -14,10 +14,11 @@ class InjectCmd(gdb.Command):
     """Inject a CDC command into the firmware RX ring buffer.
 
 Usage: inject COMMAND
-Writes COMMAND + CR into UserRxBufferFS and advances rxHead.
+Writes COMMAND + CR into rxRing and advances rxHead.
 Firmware processes it on the next main-loop iteration after 'continue'."""
 
-    BUF_SIZE = 512
+    BUF_SIZE  = 512
+    BUF_MASK  = BUF_SIZE - 1
 
     def __init__(self):
         super().__init__('inject', gdb.COMMAND_USER)
@@ -30,10 +31,10 @@ Firmware processes it on the next main-loop iteration after 'continue'."""
         try:
             h = int(gdb.parse_and_eval("'main.c'::rxHead"))
             for ch in cmd:
-                gdb.execute("set 'main.c'::UserRxBufferFS[{}] = {}".format(h, ord(ch)))
-                h = (h + 1) % self.BUF_SIZE
-            gdb.execute("set 'main.c'::UserRxBufferFS[{}] = 13".format(h))   # CR
-            h = (h + 1) % self.BUF_SIZE
+                gdb.execute("set 'main.c'::rxRing[{}] = {}".format(h, ord(ch)))
+                h = (h + 1) & self.BUF_MASK
+            gdb.execute("set 'main.c'::rxRing[{}] = 13".format(h))   # CR
+            h = (h + 1) & self.BUF_MASK
             gdb.execute("set 'main.c'::rxHead = {}".format(h))
             print("inject: '{}\\r' ({} bytes) -> rxHead={}".format(cmd, len(cmd) + 1, h))
         except Exception as e:
@@ -52,11 +53,15 @@ define st
   printf "buttonsEn     : %d\n",   buttonsEn
   printf "endstopsEn    : %d\n",   endstopsEn
   printf "diagMode      : %d\n",   diagMode
-  printf "semaphore     : 0x%08x\n", semaphore
+  printf "cdcMoveActive : %d\n",   cdcMoveActive
   printf "buzzActive    : %d\n",   buzzActive
+  printf "snapA         : 0x%08x\n", snapA
+  printf "snapB         : 0x%08x\n", snapB
+  printf "txBusy        : %d\n",   'main.c'::txBusy
+  printf "tim9Ms        : %u\n",   'main.c'::tim9Ms
 end
 document st
-Print scstepper key state (motor, inputs, semaphore).
+Print scstepper key state (motor, inputs, CDC, timers).
 end
 
 # ─── params: motor parameters (mirrors CDC 'params' command) ─────────────────
@@ -81,12 +86,26 @@ end
 define rxbuf
   printf "rxHead=%d  rxTail=%d  pending=%d B\n", \
     'main.c'::rxHead, 'main.c'::rxTail, \
-    ('main.c'::rxHead - 'main.c'::rxTail + 512) % 512
-  printf "UserRxBufferFS (first 64 bytes):\n"
-  x/64xb 'main.c'::UserRxBufferFS
+    ('main.c'::rxHead - 'main.c'::rxTail + 512) & 511
+  printf "rxRing (first 64 bytes):\n"
+  x/64xb 'main.c'::rxRing
 end
 document rxbuf
 Dump CDC RX ring buffer occupancy and raw bytes.
+end
+
+# ─── txbuf: CDC TX ring buffer ────────────────────────────────────────────────
+define txbuf
+  printf "txHead=%d  txTail=%d  txBusy=%d  pending=%d B\n", \
+    'main.c'::txHead, 'main.c'::txTail, 'main.c'::txBusy, \
+    ('main.c'::txHead - 'main.c'::txTail + 1024) & 1023
+  printf "txRing (first 64 bytes):\n"
+  x/64xb 'main.c'::txRing
+  printf "txChunk (64 bytes):\n"
+  x/64xb 'main.c'::txChunk
+end
+document txbuf
+Dump CDC TX ring buffer occupancy, txBusy flag, and raw bytes.
 end
 
 # ─── fwcheck: verify running flash matches ELF on disk ───────────────────────
