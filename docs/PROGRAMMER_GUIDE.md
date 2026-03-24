@@ -220,7 +220,70 @@ dump                — dump internal state variables
 
 ---
 
-## 8. Logic analyzer
+## 8. Automated testing via socat
+
+For scripted interaction with the firmware CLI, use `socat` — not `cat`/`echo`
+combinations, not GDB inject (which halts the target). `socat` gives clean
+bidirectional serial without stealing the port or stopping firmware execution.
+
+### Basic pattern
+
+```bash
+# Open serial bidirectionally, send a command, read response
+echo "params" | socat - /dev/ttyACMTarg,rawer,cr,nonblock=1
+```
+
+### EMI endstop test (example)
+
+Exercises motor back and forth while monitoring for false endstop triggers.
+Stops immediately on anomaly.
+
+```bash
+PORT=/dev/ttyACMTarg
+LOG=emi_test.log
+FLAG=emi_stop.flag
+rm -f "$FLAG"
+
+# Background: monitor serial output for false triggers
+socat -u "$PORT,rawer" STDOUT | tee "$LOG" | \
+  grep --line-buffered -E "ES_L|ES_R|JOGL|JOGR|STEPL|STEPR" | \
+  while read -r line; do
+    echo "$line" > "$FLAG"
+    echo "EMI ANOMALY: $line" >> "$LOG"
+  done &
+MONITOR_PID=$!
+
+# Foreground: inject commands, check sentinel before each cycle
+socat - "$PORT,rawer,cr" <<< "home"
+sleep 15   # wait for homing
+socat - "$PORT,rawer,cr" <<< "range"
+sleep 20   # wait for range
+socat - "$PORT,rawer,cr" <<< "di"
+socat - "$PORT,rawer,cr" <<< "set debug 1"
+sleep 1
+
+for i in $(seq 1 1000); do
+    [ -f "$FLAG" ] && echo "STOPPED at cycle $i — $(cat $FLAG)" && break
+    socat - "$PORT,rawer,cr" <<< "moveto 3.13"
+    sleep 5
+    [ -f "$FLAG" ] && echo "STOPPED at cycle $i — $(cat $FLAG)" && break
+    socat - "$PORT,rawer,cr" <<< "moveto 0"
+    sleep 5
+done
+
+kill $MONITOR_PID 2>/dev/null
+echo "Finished: $(date)"
+```
+
+**Rules for automated serial tests:**
+- **Always use `socat`** — never `cat`/`echo > /dev/ttyACM*` combos (unreliable, can lose data)
+- **Never use GDB inject for long test sequences** — halting the target between commands is not realistic
+- **Sentinel file pattern** for stop-on-error: monitor writes flag, loop checks before each step
+- **Exit minicom first** — two processes on the same serial port = corruption
+
+---
+
+## 9. Logic analyzer
 
 ```bash
 scripts/go.sh capture     # capture PULSE+DIR from FX2 → captures/capture_both.sr
@@ -234,7 +297,7 @@ record. When making a motion change, run a new capture and commit it.
 
 ---
 
-## 9. Boot sequence
+## 10. Boot sequence
 
 ```
 [power on / reset]
@@ -299,7 +362,7 @@ buttons enabled
 
 ---
 
-## 10. Firmware architecture
+## 11. Firmware architecture
 
 ### Two files, clear split
 - `stepper.c` — physics: ramp table generation, ISR (TIM2), EEPROM R/W, parameter validation
@@ -358,7 +421,7 @@ Beeps on: jog press, step press, endstop hit, home complete,
 
 ---
 
-## 11. Button debounce — two-phase design (TIM9)
+## 12. Button debounce — two-phase design (TIM9)
 
 **Fixed.** The old single-phase ISR had no debounce guard on the release path — bounce on
 release fired multiple `EVT_JOGL_UP` events and reset the press timer unconditionally.
@@ -407,7 +470,7 @@ conventions obscure. The callback becomes a reusable state machine, not a hardwa
 
 ---
 
-## 12. Lessons learned (from AUDIT.md)
+## 13. Lessons learned (from AUDIT.md)
 
 ### GDB scripts are not compiled
 Removing a C variable from firmware does not break `.gdb`/`.py` files —
@@ -416,7 +479,7 @@ those only fail at runtime when you run the specific GDB command.
 
 ### SPT: snapshots beat live reads
 Multiple `HAL_GPIO_ReadPin()` calls at different points in time can give
-inconsistent state. The SPT rule (§10): only ISR reads IDR into `snapA`/`snapB`,
+inconsistent state. The SPT rule (§11): only ISR reads IDR into `snapA`/`snapB`,
 everyone else reads the cached snapshot. One place writes, everyone reads.
 
 ### Shadow flags hide hardware state
@@ -445,7 +508,7 @@ Edit `Makefile.template`, not `Makefile`. CubeMX will overwrite `Makefile`.
 
 ---
 
-## 13. Reasoning principles (LL thinking)
+## 14. Reasoning principles (LL thinking)
 
 Hard-won design principles from this project. Useful far beyond it.
 
@@ -516,7 +579,7 @@ Add a `make check` guard for any critical init that must survive regen.
 
 ---
 
-## 14. TODO (open items)
+## 15. TODO (open items)
 
 See `docs/TODO.md` for full details:
 - Unified ramp table (index 0 = center, symmetric accel/decel)
