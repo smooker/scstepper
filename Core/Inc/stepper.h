@@ -95,4 +95,20 @@ void     Stepper_SetParam(const char *name, float value);
 int      Stepper_ValidateParams(void);  /* returns 1=ok, 0=warnings (save blocked) */
 void     Stepper_InitDefaults(void);    /* write defaults to EEPROM (initeeprom)    */
 
+/* DWT CYCCNT delay — hardware cycle counter, no ISR/timer dependency.
+ * DWT_Init() must be called once at boot before first use. */
+static inline void DWT_Init(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL  |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+static inline void delay_ms(uint32_t ms)
+{
+    uint32_t start = DWT->CYCCNT;
+    uint32_t ticks = ms * 96000UL;  /* 96 MHz / 1000 */
+    while ((DWT->CYCCNT - start) < ticks);
+}
+
 #endif /* STEPPER_H */

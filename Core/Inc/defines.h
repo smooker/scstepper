@@ -72,4 +72,8 @@
 
 #define PULSE_TICKS     5000UL   /* ~50us at 96MHz, +100 to compensate ISR latency */
 
+/* tim9Ms-based delay — requires tim9Ms (volatile uint32_t from TIM9 ISR) to be in scope */
+#define TIM9_DELAY(ms) { uint32_t _t = tim9Ms; while (tim9Ms - _t < (ms)); }
+
+
 #endif // DEFINES_H

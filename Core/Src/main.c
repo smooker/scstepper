@@ -76,6 +76,8 @@ uint8_t morse(const char *format, ... );
 uint16_t TxWrite(const uint8_t *data, uint16_t len);
 static void TxDrain(void);
 
+/* DWT_Init() and delay_ms() in stepper.h */
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -316,12 +318,12 @@ void dot()
     HAL_GPIO_WritePin(LED_USER_GPIO_Port, LED_USER_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
 
-    HAL_Delay(dotTime);
+    delay_ms(dotTime);
 
     HAL_GPIO_WritePin(LED_USER_GPIO_Port, LED_USER_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_SET);
 
-    HAL_Delay(interTime);
+    delay_ms(interTime);
 }
 
 // morse dash function
@@ -330,12 +332,12 @@ void dash()
     HAL_GPIO_WritePin(LED_USER_GPIO_Port, LED_USER_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
 
-    HAL_Delay(dashTime);
+    delay_ms(dashTime);
 
     HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(LED_USER_GPIO_Port, LED_USER_Pin, GPIO_PIN_SET);
 
-    HAL_Delay(interTime);
+    delay_ms(interTime);
 }
 
 /* Non-blocking morse — call MorseStart() once, MorseUpdate() from main loop */
@@ -506,7 +508,7 @@ uint8_t morse(const char *format, ... )
         }
         // space handling
         if (symbol == 32) {
-            HAL_Delay(spaceTime);
+            delay_ms(spaceTime);
             cnt2++;
             continue;
         }
@@ -526,7 +528,7 @@ uint8_t morse(const char *format, ... )
             }
             index++;
         }
-        HAL_Delay(spaceTime);
+        delay_ms(spaceTime);
         cnt2++;
     }
     return result;
@@ -687,8 +689,8 @@ void ProcessLine(void)
         else if (strcmp(cmd, "initeeprom") == 0) { Stepper_InitDefaults(); buzzRequest = 1; }
         else if (strcmp(cmd, "dump")   == 0) dumpVars();
         else if (strcmp(cmd, "cls")    == 0) { printf("\033[2J\033[H"); PrintPrompt(); }
-        else if (strcmp(cmd, "uptime") == 0) printf("uptime: %lu ms\r\n", HAL_GetTick());
-        else if (strcmp(cmd, "reset")  == 0) { printf("\033[2J\033[H"); HAL_Delay(50); NVIC_SystemReset(); }
+        else if (strcmp(cmd, "uptime") == 0) printf("uptime: %lu ms\r\n", (uint32_t)tim9Ms);
+        else if (strcmp(cmd, "reset")  == 0) { printf("\033[2J\033[H"); delay_ms(50); NVIC_SystemReset(); }
         else if (strcmp(cmd, "diag_inputs") == 0 || strcmp(cmd, "di") == 0) {
             diagMode = !diagMode;
             printf("diag_inputs %s\r\n", diagMode ? "ON" : "OFF");
@@ -722,18 +724,18 @@ void ProcessLine(void)
             __HAL_TIM_SET_COUNTER(&htim2, 0);
             while (1) {
                 HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, GPIO_PIN_SET);
-                HAL_Delay(1);
+                delay_ms(1);
                 HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-                HAL_Delay(16000);  /* 16000 pulses @ 1kHz = 16s */
+                { uint32_t _t = tim9Ms; while (tim9Ms - _t < 16000); }  /* 16s — too long for DWT */
                 HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_3);
-                HAL_Delay(500);
+                delay_ms(500);
 
                 HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, GPIO_PIN_RESET);
-                HAL_Delay(1);
+                delay_ms(1);
                 HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-                HAL_Delay(16000);
+                { uint32_t _t = tim9Ms; while (tim9Ms - _t < 16000); }
                 HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_3);
-                HAL_Delay(500);
+                delay_ms(500);
             }
         }
         else if (strcmp(cmd, "help")   == 0)
@@ -794,7 +796,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  DWT_Init();  /* hardware cycle counter — used by delay_ms(), before any morse */
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -820,7 +822,7 @@ int main(void)
       if (computed == __fw_info.crc) {
           morse("E");          /* E = dit = single short beep = CRC OK */
       } else {
-          while (1) { morse("SOS"); HAL_Delay(2000); }   /* halt */
+          while (1) { morse("SOS"); delay_ms(2000); }   /* halt */
       }
   }
 
@@ -845,7 +847,7 @@ int main(void)
   }
 
   // USB enumeration
-  HAL_Delay(1200);
+  delay_ms(1200);  /* USB enumeration settle */
 
   /* seed GPIO snapshots — before any EXTI fires, so ProcessLine sees real pin state */
   snapA = GPIOA->IDR;
@@ -1517,13 +1519,13 @@ void RunHomeEx(uint8_t fromButtons)
         if (!HomeButtonsHeld()) { \
             if (!homePressLost) homePressLost = tim9Ms | 1; \
             else if (tim9Ms - homePressLost >= HOME_RELEASE_MS) { \
-                if (stop_motor) { Stepper_Stop(); while (Stepper_IsBusy()) { HAL_Delay(5); } } \
+                if (stop_motor) { Stepper_Stop(); while (Stepper_IsBusy()) { TIM9_DELAY(5) } } \
                 goto home_restore; \
             } \
         } else { homePressLost = 0; } \
     }
 
-    endstopsEn = 0;  /* ignore EXTI — we poll manually to avoid EMI false triggers */
+    endstopsEn = 1;  /* endstops active — EXTI updates snapA for polling */
     buttonsEn = 0;
     uint32_t parkSteps = motorParams.homeoff.u;
 
@@ -1542,18 +1544,18 @@ void RunHomeEx(uint8_t fromButtons)
                 lowCount++;
             else
                 lowCount = 0;
-            HAL_Delay(5);
+            TIM9_DELAY(5)
         }
         Stepper_Stop();
-        while (Stepper_IsBusy()) { HAL_Delay(5); }
+        while (Stepper_IsBusy()) { TIM9_DELAY(5) }
         if (dbg) printf("home: ES_L confirmed, settling...\r\n");
 
         /* Phase 2: settle — 500ms, abort-checked every 10ms */
-        uint32_t settleEnd = tim9Ms + 500;
-        while (tim9Ms < settleEnd) {
+        { uint32_t settleStart = tim9Ms;
+        while (tim9Ms - settleStart < 500) {
             HOME_ABORT_CHECK(0)
-            HAL_Delay(10);
-        }
+            TIM9_DELAY(10)
+        } }
     }
 
     /* Phase 3: backoff at homespd/10 (CW) until ES_L releases (debounced) */
@@ -1570,19 +1572,19 @@ void RunHomeEx(uint8_t fromButtons)
             highCount++;
         else
             highCount = 0;
-        HAL_Delay(5);
+        TIM9_DELAY(5)
     }
     Stepper_Stop();
-    while (Stepper_IsBusy()) { HAL_Delay(5); }
+    while (Stepper_IsBusy()) { TIM9_DELAY(5) }
     if (dbg) printf("home: ES_L released, +%lu steps CW\r\n", parkSteps);
 
     /* Phase 4: park — move homeoff steps CW, abort-checked during move */
-    HAL_Delay(200);
+    TIM9_DELAY(200)
     Stepper_MoveSteps((int32_t)parkSteps);
     while (Stepper_IsBusy()) {
         HOME_ABORT_CHECK(1)
         HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin);
-        HAL_Delay(50);
+        TIM9_DELAY(50)
     }
 
     /* Home achieved */
@@ -1592,9 +1594,9 @@ void RunHomeEx(uint8_t fromButtons)
 
     /* Phase 5: 1s grace period then beep — machine is active */
     if (fromButtons) {
-        HAL_Delay(1000);
+        TIM9_DELAY(1000)
         HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_RESET);
-        HAL_Delay(150);
+        TIM9_DELAY(150)
         HAL_GPIO_WritePin(BUZZ_GPIO_Port, BUZZ_Pin, GPIO_PIN_SET);
     }
 
@@ -1622,7 +1624,7 @@ void RunRange(void)
     Stepper_Move(9999.0f);
     while (Stepper_IsBusy()) {
         HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin);
-        HAL_Delay(50);
+        TIM9_DELAY(50)
     }
 
     int32_t rawSteps = posSteps;
@@ -1635,13 +1637,13 @@ void RunRange(void)
            rawMm, usableMm, motorParams.homeoff.u);
 
     /* Return to home position — endstops off to avoid ES_L interference near home */
-    HAL_Delay(300);
-    
+    delay_ms(300);
+
     endstopsEn = 0;
     Stepper_MoveSteps(-rawSteps);
     while (Stepper_IsBusy()) {
         HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin);
-        HAL_Delay(50);
+        TIM9_DELAY(50)
     }
     endstopsEn = 1;
     
@@ -1655,22 +1657,22 @@ void RunCombo(void)
 {
     printf("combo: triangle L\r\n");
     Stepper_Move(-1.0f);
-    while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); HAL_Delay(100); }
-    HAL_Delay(500);
+    while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); TIM9_DELAY(100) }
+    delay_ms(500);
 
     printf("combo: triangle R\r\n");
     Stepper_Move(1.0f);
-    while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); HAL_Delay(100); }
-    HAL_Delay(500);
+    while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); TIM9_DELAY(100) }
+    delay_ms(500);
 
     printf("combo: trapezoid L\r\n");
     Stepper_Move(-5.0f);
-    while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); HAL_Delay(100); }
-    HAL_Delay(500);
+    while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); TIM9_DELAY(100) }
+    delay_ms(500);
 
     printf("combo: trapezoid R\r\n");
     Stepper_Move(5.0f);
-    while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); HAL_Delay(100); }
+    while (Stepper_IsBusy()) { HAL_GPIO_TogglePin(LED_USER_GPIO_Port, LED_USER_Pin); TIM9_DELAY(100) }
 
     printf("\r\n\r\ncombo done\r\n\r\n");
     PrintPrompt();

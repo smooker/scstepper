@@ -339,8 +339,7 @@ static void StartMove(int32_t steps)
     }
 
     /* wait for DIR to settle */
-    uint32_t t = HAL_GetTick();
-    while (HAL_GetTick() == t);
+    delay_ms(1);  /* DIR settle — DWT, no SysTick */
 
     moveDir        = (steps > 0) ? 1 : -1;
     stepsRemaining = ABS(steps);
@@ -442,8 +441,7 @@ void Stepper_RunContinuous(int8_t dir)
                           hw ? GPIO_PIN_SET : GPIO_PIN_RESET);
     }
 
-    uint32_t t = HAL_GetTick();
-    while (HAL_GetTick() == t);
+    delay_ms(1);  /* DIR settle — DWT, no SysTick */
 
     moveDir        = (dir > 0) ? 1 : -1;
     stepsRemaining = 0x7FFFFFFF;   /* run "forever" */
