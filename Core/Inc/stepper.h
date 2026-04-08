@@ -69,7 +69,7 @@
 
 #define PARAM_MAX_STEP_FREQ 200000UL /* Hz — typical stepper driver pulse limit */
 
-#define MAX_RAMP_STEPS      512
+#define MAX_RAMP_STEPS      5120
 
 /* ---- State machine ------------------------------------------------- */
 typedef enum {
